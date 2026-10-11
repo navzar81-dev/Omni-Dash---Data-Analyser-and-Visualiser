@@ -13,19 +13,28 @@
 
 ## 📸 Key Screenshots & Interface Preview
 
-### 1. Executive Boardroom Dashboard & Custom Widgets
+### 1. Executive Boardroom Dashboard (Midnight Cyber Theme)
 ![Executive Dashboard View](docs/screenshots/dashboard_executive_view.png)
 
 ### 2. High-Clarity Corporate Light Theme
 ![Corporate Light Theme](docs/screenshots/dashboard_light_theme.png)
 
-### 3. Obsidian Crimson Theme & Custom Theme Palettes
+### 3. Sapphire Ocean Executive Theme
+![Sapphire Ocean Theme](docs/screenshots/theme_sapphire_ocean.png)
+
+### 4. Emerald Wealth & Financial Theme
+![Emerald Financial Theme](docs/screenshots/theme_emerald_financial.png)
+
+### 5. Obsidian Crimson Dark Theme
 ![Obsidian Crimson Theme](docs/screenshots/theme_obsidian_crimson.png)
 
-### 4. Calculated Field & Custom Formula Engine
+### 6. Relational Data Modeling & Hash Joins Studio
+![Data Modeling Studio](docs/screenshots/data_modeling_modal.png)
+
+### 7. Calculated Field & Custom Formula Engine
 ![Formula Engine Modal](docs/screenshots/formula_engine_modal.png)
 
-### 5. Automated Data Profiling & Schema Health
+### 8. Automated Data Profiling & Schema Health
 ![Data Profiler](docs/screenshots/data_profiler_dark.png)
 
 ---
