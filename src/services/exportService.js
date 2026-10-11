@@ -4,6 +4,16 @@ import { jsPDF } from 'jspdf';
 import JSZip from 'jszip';
 import PptxGenJS from 'pptxgenjs';
 
+function isColorDarkHex(hex) {
+  if (!hex) return false;
+  const clean = String(hex).replace('#', '');
+  if (clean.length !== 6) return false;
+  const r = parseInt(clean.substring(0, 2), 16);
+  const g = parseInt(clean.substring(2, 4), 16);
+  const b = parseInt(clean.substring(4, 6), 16);
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 140;
+}
+
 /**
  * Captures an HTML DOM element as a high-resolution base64 PNG data URL
  */
@@ -161,20 +171,32 @@ export async function exportDashboardToPng(elementId, fileName = 'Dashboard_Snap
 /**
  * Generates and downloads a real PowerPoint (.pptx) Presentation deck from slides
  */
-export async function exportPresentationToPptx(slides, capturedImagesMap = {}, meta = {}) {
+export async function exportPresentationToPptx(slides, capturedImagesMap = {}, meta = {}, brandTemplate = null) {
   const pptx = new PptxGenJS();
   pptx.layout = 'LAYOUT_16x9';
   pptx.author = 'OmniDash Business Intelligence';
-  pptx.company = meta.company || 'Enterprise Analytics';
+  pptx.company = meta.company || (brandTemplate?.name ? `${brandTemplate.name} Intelligence` : 'Enterprise Analytics');
   pptx.title = meta.title || 'Executive Presentation Deck';
 
-  const isDark = meta.theme !== 'light';
-  const bgColor = isDark ? '0A0E1A' : 'F8FAFC';
-  const textMainColor = isDark ? 'F8FAFC' : '0F172A';
-  const textMutedColor = isDark ? '94A3B8' : '64748B';
-  const accentColor = '6366F1';
+  // Resolve colors & fonts from Brand Template or fallback
+  const isDark = brandTemplate ? isColorDarkHex(brandTemplate.colors?.background) : meta.theme !== 'light';
+  const cleanHex = (h, fallback) => (h ? String(h).replace('#', '') : fallback);
 
-  for (const slide of slides) {
+  const bgColor = cleanHex(brandTemplate?.colors?.background, isDark ? '0A0E1A' : 'F8FAFC');
+  const surfaceColor = cleanHex(brandTemplate?.colors?.surface, isDark ? '131B2E' : 'FFFFFF');
+  const textMainColor = cleanHex(brandTemplate?.colors?.textPrimary, isDark ? 'F8FAFC' : '0F172A');
+  const textMutedColor = cleanHex(brandTemplate?.colors?.textMuted, isDark ? '94A3B8' : '64748B');
+  const primaryColor = cleanHex(brandTemplate?.colors?.primary, '2563EB');
+  const accentColor = cleanHex(brandTemplate?.colors?.accent, '38BDF8');
+
+  const fontHeading = brandTemplate?.fonts?.heading || 'Arial';
+  const fontBody = brandTemplate?.fonts?.body || 'Calibri';
+  const logoData = brandTemplate?.logoUrl || null;
+  const footerDisclaimer = brandTemplate?.footerDisclaimer || 'Confidential & Proprietary';
+  const showAccentStripe = brandTemplate?.showAccentStripe !== false;
+
+  for (let idx = 0; idx < slides.length; idx++) {
+    const slide = slides[idx];
     const s = pptx.addSlide();
     s.background = { color: bgColor };
 
@@ -182,6 +204,56 @@ export async function exportPresentationToPptx(slides, capturedImagesMap = {}, m
     if (slide.speakerNotes) {
       s.notes = slide.speakerNotes;
     }
+
+    // Top Master Accent Stripe
+    if (showAccentStripe) {
+      s.addShape(pptx.ShapeType.rect, {
+        x: 0,
+        y: 0,
+        w: 13.33,
+        h: 0.08,
+        fill: { color: primaryColor },
+        line: { color: primaryColor }
+      });
+    }
+
+    // Top-Right Brand Logo
+    if (logoData) {
+      try {
+        s.addImage({
+          data: logoData,
+          x: 11.0,
+          y: 0.3,
+          w: 1.8,
+          h: 0.55,
+          sizing: { type: 'contain', w: 1.8, h: 0.55 }
+        });
+      } catch (err) {
+        console.warn('[ExportService] Could not add logo to slide:', err);
+      }
+    }
+
+    // Master Footer (Confidentiality & Slide Pagination)
+    s.addText(footerDisclaimer, {
+      x: 0.8,
+      y: 7.1,
+      w: 8.5,
+      h: 0.3,
+      fontSize: 9,
+      color: textMutedColor,
+      fontFace: fontBody
+    });
+
+    s.addText(`Slide ${idx + 1} of ${slides.length}`, {
+      x: 10.0,
+      y: 7.1,
+      w: 2.5,
+      h: 0.3,
+      fontSize: 9,
+      color: textMutedColor,
+      align: 'right',
+      fontFace: fontBody
+    });
 
     if (slide.layout === 'title') {
       // Title Slide
@@ -193,7 +265,7 @@ export async function exportPresentationToPptx(slides, capturedImagesMap = {}, m
         fontSize: 36,
         bold: true,
         color: textMainColor,
-        fontFace: 'Arial'
+        fontFace: fontHeading
       });
 
       s.addText(slide.subtitle || 'Strategic Data Review & Growth Insights', {
@@ -203,40 +275,40 @@ export async function exportPresentationToPptx(slides, capturedImagesMap = {}, m
         h: 0.8,
         fontSize: 20,
         color: accentColor,
-        fontFace: 'Arial'
+        fontFace: fontBody
       });
 
-      s.addText(`Prepared for: ${meta.company || 'Executive Board'}  |  Date: ${new Date().toLocaleDateString()}`, {
+      s.addText(`Prepared for: ${meta.company || (brandTemplate?.name ? brandTemplate.name : 'Executive Board')}  |  Date: ${new Date().toLocaleDateString()}`, {
         x: 1.0,
         y: 5.5,
         w: 11.3,
         h: 0.5,
         fontSize: 12,
         color: textMutedColor,
-        fontFace: 'Arial'
+        fontFace: fontBody
       });
     } else {
       // Standard Content Slide Header
       s.addText(slide.title || 'Strategic Overview', {
         x: 0.8,
         y: 0.5,
-        w: 11.5,
+        w: 9.8,
         h: 0.7,
         fontSize: 24,
         bold: true,
         color: textMainColor,
-        fontFace: 'Arial'
+        fontFace: fontHeading
       });
 
       if (slide.subtitle) {
         s.addText(slide.subtitle, {
           x: 0.8,
           y: 1.15,
-          w: 11.5,
+          w: 9.8,
           h: 0.4,
           fontSize: 13,
-          color: textMutedColor,
-          fontFace: 'Arial'
+          color: accentColor,
+          fontFace: fontBody
         });
       }
 
@@ -272,7 +344,7 @@ export async function exportPresentationToPptx(slides, capturedImagesMap = {}, m
             y: 1.8,
             w: 4.8,
             h: 4.5,
-            fontFace: 'Arial'
+            fontFace: fontBody
           });
         }
       } else if (slide.layout === 'kpi-spotlight') {
@@ -285,8 +357,8 @@ export async function exportPresentationToPptx(slides, capturedImagesMap = {}, m
               y: 2.0,
               w: 2.7,
               h: 2.2,
-              fill: { color: isDark ? '131B2E' : 'FFFFFF' },
-              line: { color: accentColor, width: 1 }
+              fill: { color: surfaceColor },
+              line: { color: primaryColor, width: 1 }
             });
 
             s.addText(k.label, {
@@ -296,6 +368,7 @@ export async function exportPresentationToPptx(slides, capturedImagesMap = {}, m
               h: 0.4,
               fontSize: 11,
               color: textMutedColor,
+              fontFace: fontBody,
               bold: true
             });
 
@@ -306,6 +379,7 @@ export async function exportPresentationToPptx(slides, capturedImagesMap = {}, m
               h: 0.7,
               fontSize: 22,
               color: textMainColor,
+              fontFace: fontHeading,
               bold: true
             });
 
@@ -315,7 +389,8 @@ export async function exportPresentationToPptx(slides, capturedImagesMap = {}, m
               w: 2.3,
               h: 0.4,
               fontSize: 11,
-              color: '10B981',
+              color: primaryColor,
+              fontFace: fontBody,
               bold: true
             });
           });
@@ -333,7 +408,7 @@ export async function exportPresentationToPptx(slides, capturedImagesMap = {}, m
             y: 4.6,
             w: 11.5,
             h: 2.2,
-            fontFace: 'Arial'
+            fontFace: fontBody
           });
         }
       } else if (slide.layout === 'conclusions') {
@@ -349,7 +424,7 @@ export async function exportPresentationToPptx(slides, capturedImagesMap = {}, m
             y: 2.0,
             w: 11.0,
             h: 4.8,
-            fontFace: 'Arial'
+            fontFace: fontBody
           });
         }
       }

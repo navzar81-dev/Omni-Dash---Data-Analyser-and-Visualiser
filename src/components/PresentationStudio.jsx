@@ -22,6 +22,11 @@ import {
   Target
 } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
+import { BrandTemplateModal } from './BrandTemplateModal';
+import {
+  loadActiveBrandTemplate,
+  isColorDark
+} from '../services/brandTemplateService';
 import {
   exportPresentationToPptx,
   exportPresentationToPdf,
@@ -125,6 +130,8 @@ export function PresentationStudio({
   const [isPresenting, setIsPresenting] = useState(false);
   const [showSpeakerNotes, setShowSpeakerNotes] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [brandTemplate, setBrandTemplate] = useState(() => loadActiveBrandTemplate());
+  const [isBrandModalOpen, setIsBrandModalOpen] = useState(false);
 
   // Sync slides if deck is empty or dataset switched
   useEffect(() => {
@@ -323,9 +330,9 @@ export function PresentationStudio({
 
       await exportPresentationToPptx(slides, capturedImagesMap, {
         title: datasetMeta?.name || 'Executive Presentation',
-        company: 'Executive Board',
+        company: brandTemplate?.name || 'Executive Board',
         theme: 'dark'
-      });
+      }, brandTemplate);
     } catch (err) {
       console.error('Failed to export PPTX:', err);
     } finally {
@@ -337,7 +344,6 @@ export function PresentationStudio({
   const handleExportPdfSlides = async () => {
     setIsExporting(true);
     try {
-      const slideIds = slides.map((_, i) => `slide-canvas-preview`);
       // Export current active view as PDF
       await exportPresentationToPdf(['slide-canvas-preview'], datasetMeta?.name || 'Presentation_Deck');
     } catch (err) {
@@ -404,8 +410,19 @@ export function PresentationStudio({
               </div>
             </div>
 
-            {/* Actions: Generate, Present, Export */}
+            {/* Actions: Brand Master, Generate, Present, Export */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {/* Brand Master Template Button */}
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => setIsBrandModalOpen(true)}
+                style={{ gap: '6px' }}
+                title="Upload or customize PowerPoint Brand Master Template (.pptx / .potx)"
+              >
+                <Layers size={14} color="#38bdf8" />
+                <span>Brand: <strong style={{ color: '#38bdf8' }}>{brandTemplate?.name || 'Master'}</strong></span>
+              </button>
+
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={generateDefaultDeck}
@@ -558,46 +575,117 @@ export function PresentationStudio({
             background: isPresenting ? '#07090e' : 'rgba(0, 0, 0, 0.4)',
             overflowY: 'auto'
           }}>
-            {/* Slide Canvas Target */}
-            <div
-              id="slide-canvas-preview"
-              className="glass-panel"
-              style={{
-                width: isPresenting ? '100vw' : '100%',
-                maxWidth: isPresenting ? 'none' : '1080px',
-                aspectRatio: '16 / 9',
-                borderRadius: isPresenting ? 0 : '12px',
-                padding: isPresenting ? '48px 64px' : '36px 44px',
-                background: '#0a0e17',
-                border: isPresenting ? 'none' : '1px solid var(--border-subtle)',
-                display: 'flex',
-                flexDirection: 'column',
-                position: 'relative',
-                boxShadow: '0 25px 60px rgba(0, 0, 0, 0.8)'
-              }}
-            >
-              {/* Slide Content by Layout */}
+          {(() => {
+            const brandColors = brandTemplate?.colors || {};
+            const brandFonts = brandTemplate?.fonts || {};
+            const isDarkCanvas = isColorDark(brandColors.background || '#0a0e17');
 
-              {/* 1. TITLE LAYOUT */}
-              {currentSlide.layout === 'title' && (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 20px' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                    <span className="badge badge-indigo" style={{ fontSize: '0.8rem', padding: '3px 10px' }}>
-                      Executive Strategic Briefing
-                    </span>
+            const canvasBg = brandColors.background || '#0a0e17';
+            const canvasSurface = brandColors.surface || (isDarkCanvas ? 'rgba(255, 255, 255, 0.03)' : '#f8fafc');
+            const canvasTextMain = brandColors.textPrimary || (isDarkCanvas ? '#f8fafc' : '#0f172a');
+            const canvasTextMuted = brandColors.textMuted || (isDarkCanvas ? '#94a3b8' : '#64748b');
+            const brandPrimary = brandColors.primary || '#2563eb';
+            const brandAccent = brandColors.accent || '#38bdf8';
+            const headingFont = brandFonts.heading ? `"${brandFonts.heading}", system-ui, sans-serif` : 'inherit';
+            const bodyFont = brandFonts.body ? `"${brandFonts.body}", system-ui, sans-serif` : 'inherit';
+
+            return (
+              <div
+                id="slide-canvas-preview"
+                className="glass-panel"
+                style={{
+                  width: isPresenting ? '100vw' : '100%',
+                  maxWidth: isPresenting ? 'none' : '1080px',
+                  aspectRatio: '16 / 9',
+                  borderRadius: isPresenting ? 0 : '12px',
+                  padding: isPresenting ? '48px 64px' : '36px 44px',
+                  background: canvasBg,
+                  color: canvasTextMain,
+                  fontFamily: bodyFont,
+                  border: isPresenting ? 'none' : `1px solid ${isDarkCanvas ? 'var(--border-subtle)' : '#e2e8f0'}`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  boxShadow: '0 25px 60px rgba(0, 0, 0, 0.8)'
+                }}
+              >
+                {/* Top Master Accent Stripe */}
+                {brandTemplate?.showAccentStripe !== false && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: '4px',
+                      background: brandPrimary
+                    }}
+                  />
+                )}
+
+                {/* Top-Right Corporate Logo */}
+                {brandTemplate?.logoUrl && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '16px',
+                      right: '28px',
+                      maxHeight: '36px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      zIndex: 10
+                    }}
+                  >
+                    <img
+                      src={brandTemplate.logoUrl}
+                      alt="Brand Logo"
+                      style={{ maxHeight: '32px', maxWidth: '140px', objectFit: 'contain' }}
+                    />
                   </div>
-                  <h1 style={{ fontSize: isPresenting ? '3.2rem' : '2.4rem', fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1.15, marginBottom: '14px' }}>
-                    {currentSlide.title}
-                  </h1>
-                  <p style={{ fontSize: isPresenting ? '1.4rem' : '1.1rem', color: '#818cf8', fontWeight: 600, marginBottom: '40px' }}>
-                    {currentSlide.subtitle}
-                  </p>
-                  <div style={{ display: 'flex', gap: '24px', fontSize: '0.85rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border-subtle)', paddingTop: '20px' }}>
-                    <div>Prepared by: <strong style={{ color: 'var(--text-main)' }}>{currentSlide.presenter || 'OmniDash Analytics'}</strong></div>
-                    <div>Date: <strong style={{ color: 'var(--text-main)' }}>{currentSlide.date}</strong></div>
+                )}
+
+                {/* Slide Content by Layout */}
+
+                {/* 1. TITLE LAYOUT */}
+                {currentSlide.layout === 'title' && (
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 20px' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                      <span
+                        style={{
+                          fontSize: '0.8rem',
+                          padding: '3px 10px',
+                          borderRadius: '12px',
+                          background: brandPrimary,
+                          color: '#ffffff',
+                          fontWeight: 700
+                        }}
+                      >
+                        {brandTemplate?.name ? `${brandTemplate.name} Briefing` : 'Executive Strategic Briefing'}
+                      </span>
+                    </div>
+                    <h1
+                      style={{
+                        fontSize: isPresenting ? '3.2rem' : '2.4rem',
+                        fontWeight: 800,
+                        fontFamily: headingFont,
+                        color: canvasTextMain,
+                        letterSpacing: '-0.03em',
+                        lineHeight: 1.15,
+                        marginBottom: '14px'
+                      }}
+                    >
+                      {currentSlide.title}
+                    </h1>
+                    <p style={{ fontSize: isPresenting ? '1.4rem' : '1.1rem', color: brandAccent, fontWeight: 600, marginBottom: '40px' }}>
+                      {currentSlide.subtitle}
+                    </p>
+                    <div style={{ display: 'flex', gap: '24px', fontSize: '0.85rem', color: canvasTextMuted, borderTop: `1px solid ${isDarkCanvas ? 'var(--border-subtle)' : '#e2e8f0'}`, paddingTop: '20px' }}>
+                      <div>Prepared by: <strong style={{ color: canvasTextMain }}>{currentSlide.presenter || (brandTemplate?.name ? brandTemplate.name : 'OmniDash Analytics')}</strong></div>
+                      <div>Date: <strong style={{ color: canvasTextMain }}>{currentSlide.date}</strong></div>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
               {/* 2. KPI SPOTLIGHT LAYOUT */}
               {currentSlide.layout === 'kpi-spotlight' && (
@@ -749,21 +837,25 @@ export function PresentationStudio({
                 </div>
               )}
 
-              {/* Slide Footer */}
-              <div style={{
-                marginTop: 'auto',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                fontSize: '0.72rem',
-                color: 'var(--text-faint)',
-                borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-                paddingTop: '10px'
-              }}>
-                <div>OmniDash Executive Intelligence · Confidential</div>
-                <div>Slide {activeSlideIndex + 1} of {slides.length}</div>
+                {/* Slide Footer */}
+                <div
+                  style={{
+                    marginTop: 'auto',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    fontSize: '0.72rem',
+                    color: canvasTextMuted,
+                    borderTop: `1px solid ${isDarkCanvas ? 'rgba(255, 255, 255, 0.08)' : '#e2e8f0'}`,
+                    paddingTop: '10px'
+                  }}
+                >
+                  <div>{brandTemplate?.footerDisclaimer || 'OmniDash Executive Intelligence · Confidential'}</div>
+                  <div>Slide {activeSlideIndex + 1} of {slides.length}</div>
+                </div>
               </div>
-            </div>
+            );
+          })()}
 
             {/* Presenter Mode Floating Navigation Controls */}
             {isPresenting && (
@@ -969,6 +1061,16 @@ export function PresentationStudio({
           )}
         </div>
       </div>
+
+      {/* Corporate Brand Master Template Studio Modal */}
+      {isBrandModalOpen && (
+        <BrandTemplateModal
+          isOpen={isBrandModalOpen}
+          onClose={() => setIsBrandModalOpen(false)}
+          activeTemplate={brandTemplate}
+          onApplyTemplate={(newT) => setBrandTemplate(newT)}
+        />
+      )}
     </div>
   );
 }

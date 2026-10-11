@@ -37,6 +37,12 @@
 ### 8. Automated Data Profiling & Schema Health
 ![Data Profiler](docs/screenshots/data_profiler_dark.png)
 
+### 9. Presentation Studio & 16:9 Boardroom Slide Deck
+![Presentation Studio Deck](docs/screenshots/presentation_studio_brand_master.png)
+
+### 10. PowerPoint Brand Master Template Ingestion Studio (.pptx / .potx)
+![Brand Master Template Studio](docs/screenshots/brand_master_template_modal.png)
+
 ---
 
 ## ⚡ Two Ways to Run OmniDash
@@ -133,8 +139,13 @@ Enrich datasets and merge multiple sources directly inside the browser:
 * **Tier 2 (AirLLM Companion Server)**: Stream large models (up to 70B parameters) on consumer laptops using the optional Python FastAPI companion (`airllm_server.py`)
 * **Tier 3 (Heuristic Reasoner)**: Instant, zero-latency rule-based statistical analysis fallback
 
-### 8. Boardroom Presentation Studio & Multi-Format Export
-* 📽️ **PowerPoint (`.pptx`)**: Generates styled slide decks with KPIs, charts, and executive insights via `PptxGenJS`
+### 8. Boardroom Presentation Studio & Brand Master Ingestion
+* 🎨 **PowerPoint Brand Master Upload (`.pptx` / `.potx`)**:
+  * Drop an official corporate presentation or template directly into the studio
+  * Client-side zero-cloud extraction unpacks theme XML colors (`accent1`–`accent6`, `dk1`, `lt1`), corporate font schemes (`majorFont`, `minorFont`), and master slide logos/media assets
+  * Live 16:9 in-browser presentation canvas instantly reskins to your brand master (accent stripes, fonts, color ramps, logo headers, and confidentiality footers)
+* 🏢 **Curated Corporate Brand Presets**: Out-of-the-box presets for Executive Navy & Slate, Clean Corporate Light, Wealth & Financial Green, Silicon Valley Cyber, and Obsidian Crimson
+* 📽️ **PowerPoint (`.pptx`) Export**: Generates true native PowerPoint presentations matching the active brand template via `PptxGenJS`
 * 📑 **Executive PDF**: Multi-page vectorized PDF reports (`jsPDF` + `html2canvas`)
 * 📦 **All-Charts ZIP**: Packages every dashboard widget as high-resolution PNGs in one click
 * 💾 **View Layout Backup (`.json`)**: Export and import your custom dashboard view configurations
@@ -163,6 +174,7 @@ Omni-Dash---Data-Analyser-and-Visualiser/
 │   │   ├── DataModelingModal.jsx                # Relational Joins & Category Bucketing Studio
 │   │   ├── AdvancedFilterModal.jsx              # Compound SQL-like predicate filter builder
 │   │   ├── BrandingModal.jsx                    # Brand logo, themes, accent color & density studio
+│   │   ├── BrandTemplateModal.jsx               # PPT Brand Master Template (.pptx) inspector & uploader
 │   │   ├── GlobalFilterBar.jsx                  # Interactive filter bar with active rule pills
 │   │   ├── ExecutiveKpis.jsx                    # KPI metric summary cards with pacing & delta
 │   │   ├── FormulaEngineModal.jsx               # Custom calculated field & arithmetic formula engine
@@ -175,6 +187,7 @@ Omni-Dash---Data-Analyser-and-Visualiser/
 │   │   ├── LocalAiModal.jsx                     # Local GGUF & AirLLM model manager
 │   │   └── AiAnalystDrawer.jsx                  # Local AI data chat copilot
 │   └── services/
+│       ├── brandTemplateService.js              # PPTX theme XML, font & media extraction engine
 │       ├── dataModelingService.js               # Join engine, binning, and compound filter logic
 │       ├── calculationEngine.js                 # Aggregations (SUM/AVG/MIN/MAX), formulas & deltas
 │       ├── fileParsers.js                       # Multi-format parsing (XLSX, CSV, DOCX, PPTX, PDF)
