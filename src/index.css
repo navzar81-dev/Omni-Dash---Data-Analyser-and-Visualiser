@@ -153,23 +153,53 @@
   color: #000000 !important;
 }
 
-/* Navbar Accordion Tabs & Labels in Light Theme */
+/* Navbar Accordion Tabs & Labels in Light Theme (Subtle brand blue collapsed, Royal Blue + White Font expanded) */
 [data-theme='light'] .nav-accordion-btn {
-  color: #000000 !important;
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.14);
-  font-weight: 700;
+  background: rgba(99, 102, 241, 0.12) !important;
+  border-color: rgba(99, 102, 241, 0.28) !important;
+  color: #ffffff !important;
 }
 
-[data-theme='light'] .nav-accordion-label span {
-  color: #000000 !important;
-  font-weight: 700;
+[data-theme='light'] .nav-accordion-btn svg {
+  color: #4f46e5 !important;
+  stroke: #4f46e5 !important;
 }
 
 [data-theme='light'] .nav-accordion-btn:hover,
+[data-theme='light'] .nav-accordion-btn:focus-visible,
 [data-theme='light'] .nav-accordion-btn.is-active {
-  background: rgba(0, 0, 0, 0.08);
-  border-color: rgba(0, 0, 0, 0.25);
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%) !important;
+  border-color: #4f46e5 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.45) !important;
+}
+
+[data-theme='light'] .nav-accordion-btn:hover svg,
+[data-theme='light'] .nav-accordion-btn:focus-visible svg,
+[data-theme='light'] .nav-accordion-btn.is-active svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+[data-theme='light'] .nav-accordion-btn:hover .nav-accordion-label,
+[data-theme='light'] .nav-accordion-btn:focus-visible .nav-accordion-label,
+[data-theme='light'] .nav-accordion-btn.is-active .nav-accordion-label,
+[data-theme='light'] .nav-accordion-btn:hover .nav-accordion-label span,
+[data-theme='light'] .nav-accordion-btn:focus-visible .nav-accordion-label span,
+[data-theme='light'] .nav-accordion-btn.is-active .nav-accordion-label span,
+[data-theme='light'] .nav-accordion-btn:hover span,
+[data-theme='light'] .nav-accordion-btn.is-active span {
+  color: #ffffff !important;
+}
+
+[data-theme='light'] .nav-accordion-btn:hover .nav-pill-badge,
+[data-theme='light'] .nav-accordion-btn.is-active .nav-pill-badge,
+[data-theme='light'] .nav-accordion-btn:hover span[style*="border-radius"],
+[data-theme='light'] .nav-accordion-btn.is-active span[style*="border-radius"],
+[data-theme='light'] .nav-accordion-btn:hover span[style*="borderRadius"],
+[data-theme='light'] .nav-accordion-btn.is-active span[style*="borderRadius"] {
+  background: rgba(255, 255, 255, 0.25) !important;
+  color: #ffffff !important;
 }
 
 /* Table Column Headers in Light Theme */
@@ -577,27 +607,42 @@ select optgroup {
   min-width: 38px;
   padding: 0 10px;
   border-radius: 9px;
-  border: 1px solid var(--border-subtle);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-main);
+  border: 1px solid rgba(99, 102, 241, 0.28);
+  background: rgba(99, 102, 241, 0.12);
+  color: #ffffff;
   cursor: pointer;
   position: relative;
   font-family: var(--font-sans);
   font-size: 0.8rem;
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
   transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: visible;
   user-select: none;
 }
 
+.nav-accordion-btn svg {
+  color: #a5b4fc;
+  stroke: #a5b4fc;
+  transition: color 0.2s ease, stroke 0.2s ease;
+}
+
+/* Expanded / Hovered / Active state: Uniform Royal Blue (#6366f1 / #4f46e5) with White Font & White Icon */
 .nav-accordion-btn:hover,
 .nav-accordion-btn:focus-visible,
 .nav-accordion-btn.is-active {
-  background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(255, 255, 255, 0.25);
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%) !important;
+  border-color: #4f46e5 !important;
+  color: #ffffff !important;
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.45) !important;
+}
+
+.nav-accordion-btn:hover svg,
+.nav-accordion-btn:focus-visible svg,
+.nav-accordion-btn.is-active svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
 }
 
 .nav-accordion-label {
@@ -618,45 +663,26 @@ select optgroup {
 .nav-accordion-btn:hover .nav-accordion-label,
 .nav-accordion-btn:focus-visible .nav-accordion-label,
 .nav-accordion-btn.is-active .nav-accordion-label {
-  max-width: 200px;
+  max-width: 220px;
   opacity: 1;
   margin-left: 7px;
   pointer-events: auto;
 }
 
-.nav-accordion-btn.variant-primary {
-  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-  color: #ffffff;
-  border-color: rgba(99, 102, 241, 0.4);
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+.nav-accordion-label span {
+  color: #ffffff !important;
+  font-weight: 700;
 }
 
-.nav-accordion-btn.variant-primary:hover {
-  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.5);
-}
-
-.nav-accordion-btn.variant-accent {
-  background: rgba(16, 185, 129, 0.12);
-  color: #34d399;
-  border-color: rgba(16, 185, 129, 0.3);
-}
-
-.nav-accordion-btn.variant-accent:hover {
-  background: rgba(16, 185, 129, 0.22);
-  border-color: #34d399;
-}
-
-.nav-accordion-btn.variant-ai {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 182, 212, 0.15) 100%);
-  color: #34d399;
-  border-color: rgba(16, 185, 129, 0.35);
-}
-
-.nav-accordion-btn.variant-ai:hover {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.28) 0%, rgba(6, 182, 212, 0.28) 100%);
-  border-color: #34d399;
-  box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
+.nav-accordion-btn:hover .nav-pill-badge,
+.nav-accordion-btn.is-active .nav-pill-badge,
+.nav-accordion-btn:hover span[style*="border-radius"],
+.nav-accordion-btn.is-active span[style*="border-radius"],
+.nav-accordion-btn:hover span[style*="borderRadius"],
+.nav-accordion-btn.is-active span[style*="borderRadius"] {
+  background: rgba(255, 255, 255, 0.25) !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
 }
 
 .nav-badge-dot {

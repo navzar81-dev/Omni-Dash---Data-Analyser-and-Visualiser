@@ -202,10 +202,11 @@ export function Navbar({
       </div>
 
       {/* Action Controls - Expanding Accordion Toolbar (Recommendation 2) */}
+      {/* Action Controls - Expanding Accordion Toolbar (Recommendation 2) */}
       <div className="navbar-actions-toolbar" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
         {/* Upload Dataset Button */}
         <button
-          className="nav-accordion-btn variant-primary"
+          className="nav-accordion-btn"
           onClick={onOpenUpload}
           id="btn-upload-dataset"
           title="Upload Dataset (Excel, CSV, Word, PowerPoint, PDF)"
@@ -221,11 +222,11 @@ export function Navbar({
 
         {/* Presentation Studio Button */}
         <button
-          className="nav-accordion-btn variant-accent"
+          className="nav-accordion-btn"
           onClick={onOpenPresentation}
           title="Presentation Studio (Build Boardroom Slide Deck & PPTX)"
         >
-          <Presentation size={16} color="#34d399" />
+          <Presentation size={16} />
           <span className="nav-accordion-label">
             <span>Presentation Studio</span>
           </span>
@@ -237,7 +238,7 @@ export function Navbar({
           onClick={onOpenFormula}
           title="Calculated Field (Formulas, Ratios & Computed Columns)"
         >
-          <Calculator size={16} color="#10b981" />
+          <Calculator size={16} />
           <span className="nav-accordion-label">
             <span>Calculated Field</span>
           </span>
@@ -249,7 +250,7 @@ export function Navbar({
           onClick={onOpenProfiler}
           title="Data Profiler (Data Types, Distributions & Outliers)"
         >
-          <Layers size={16} color="#60a5fa" />
+          <Layers size={16} />
           <span className="nav-accordion-label">
             <span>Data Profiler</span>
           </span>
@@ -261,7 +262,7 @@ export function Navbar({
           onClick={onOpenDataModeling}
           title="Data Modeling (Multi-Table Joins, Merges & Custom Bucket Grouping)"
         >
-          <GitMerge size={16} color="#06b6d4" />
+          <GitMerge size={16} />
           <span className="nav-accordion-label">
             <span>Data Modeling</span>
           </span>
@@ -273,7 +274,7 @@ export function Navbar({
           onClick={onToggleInsights}
           title={`Smart Insights (${insightsCount} automated insights detected)`}
         >
-          <Sparkles size={16} color="#fbbf24" />
+          <Sparkles size={16} />
           {insightsCount > 0 && <span className="nav-badge-dot" />}
           <span className="nav-accordion-label">
             <span>Smart Insights</span>
@@ -287,11 +288,11 @@ export function Navbar({
 
         {/* Local AI Business Analyst Button */}
         <button
-          className="nav-accordion-btn variant-ai"
+          className="nav-accordion-btn"
           onClick={onToggleAiAnalyst}
           title="AI Business Analyst (Offline In-Browser GGUF / AirLLM)"
         >
-          <Sparkles size={15} color="#34d399" />
+          <Sparkles size={15} />
           <span className="nav-accordion-label">
             <span>AI Analyst</span>
             <span className="badge badge-emerald nav-pill-badge">
@@ -303,7 +304,7 @@ export function Navbar({
         {/* Local & Cloud Drive Sync Hub Button */}
         {onOpenDriveSync && (
           <button
-            className={`nav-accordion-btn ${isDriveConnected ? 'variant-accent' : ''}`}
+            className={`nav-accordion-btn ${isDriveConnected ? 'is-active' : ''}`}
             onClick={onOpenDriveSync}
             title={
               isDriveConnected
@@ -311,7 +312,7 @@ export function Navbar({
                 : 'Connect Local Google Drive / OneDrive Folder (File System Access & .omnidash Hub)'
             }
           >
-            <HardDrive size={16} color={isDriveConnected ? '#10b981' : '#38bdf8'} />
+            <HardDrive size={16} />
             <span className="nav-accordion-label">
               <span>Drive Sync</span>
               {isDriveConnected ? (
@@ -334,7 +335,7 @@ export function Navbar({
             onClick={() => setShowExportMenu(!showExportMenu)}
             title="Export Presentation, Executive PDF, All Charts ZIP, Excel, CSV & Workspace"
           >
-            <Download size={16} color="#a855f7" />
+            <Download size={16} />
             <span className="nav-accordion-label">
               <span>Export</span>
               <ChevronDown size={13} />
