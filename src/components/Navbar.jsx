@@ -19,7 +19,9 @@ import {
   Camera,
   Save,
   GitMerge,
-  Palette
+  Palette,
+  HardDrive,
+  FolderSync
 } from 'lucide-react';
 import { SAMPLE_DATASETS } from '../services/sampleDatasets';
 
@@ -45,7 +47,11 @@ export function Navbar({
   onExportExcel,
   onExportCsv,
   onExportAllChartsZip,
-  onExportViewJson
+  onExportViewJson,
+  onOpenDriveSync,
+  isDriveConnected,
+  driveFolderName,
+  onSaveWorkspaceSnapshot
 }) {
   const [showDatasetMenu, setShowDatasetMenu] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -294,12 +300,39 @@ export function Navbar({
           </span>
         </button>
 
+        {/* Local & Cloud Drive Sync Hub Button */}
+        {onOpenDriveSync && (
+          <button
+            className={`nav-accordion-btn ${isDriveConnected ? 'variant-accent' : ''}`}
+            onClick={onOpenDriveSync}
+            title={
+              isDriveConnected
+                ? `Connected to Drive Folder: "${driveFolderName}" (Click to browse files, save or restore)`
+                : 'Connect Local Google Drive / OneDrive Folder (File System Access & .omnidash Hub)'
+            }
+          >
+            <HardDrive size={16} color={isDriveConnected ? '#10b981' : '#38bdf8'} />
+            <span className="nav-accordion-label">
+              <span>Drive Sync</span>
+              {isDriveConnected ? (
+                <span className="badge badge-emerald nav-pill-badge" style={{ maxWidth: '85px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {driveFolderName}
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.64rem', opacity: 0.85, background: 'rgba(56, 189, 248, 0.2)', padding: '1px 5px', borderRadius: '4px' }}>
+                  GDrive/OneDrive
+                </span>
+              )}
+            </span>
+          </button>
+        )}
+
         {/* Export Dropdown */}
         <div style={{ position: 'relative' }}>
           <button
             className={`nav-accordion-btn ${showExportMenu ? 'is-active' : ''}`}
             onClick={() => setShowExportMenu(!showExportMenu)}
-            title="Export Presentation, Executive PDF, All Charts ZIP, Excel & CSV"
+            title="Export Presentation, Executive PDF, All Charts ZIP, Excel, CSV & Workspace"
           >
             <Download size={16} color="#a855f7" />
             <span className="nav-accordion-label">
@@ -315,7 +348,7 @@ export function Navbar({
                 position: 'absolute',
                 top: 'calc(100% + 8px)',
                 right: 0,
-                width: '230px',
+                width: '240px',
                 padding: '6px',
                 zIndex: 60,
                 display: 'flex',
@@ -324,6 +357,30 @@ export function Navbar({
               }}
               onMouseLeave={() => setShowExportMenu(false)}
             >
+              {onOpenDriveSync && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  style={{ width: '100%', justifyContent: 'flex-start', border: 'none', background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8' }}
+                  onClick={() => { onOpenDriveSync(); setShowExportMenu(false); }}
+                >
+                  <FolderSync size={14} color="#38bdf8" />
+                  <span>Drive Sync & Backups Hub</span>
+                </button>
+              )}
+
+              {onSaveWorkspaceSnapshot && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  style={{ width: '100%', justifyContent: 'flex-start', border: 'none' }}
+                  onClick={() => { onSaveWorkspaceSnapshot(); setShowExportMenu(false); }}
+                >
+                  <Save size={14} color="#8b5cf6" />
+                  <span>Save Workspace (.omnidash)</span>
+                </button>
+              )}
+
+              <div style={{ height: '1px', background: 'var(--border-subtle)', margin: '4px 0' }} />
+
               {/* Batch Chart Download */}
               <button
                 className="btn btn-secondary btn-sm"

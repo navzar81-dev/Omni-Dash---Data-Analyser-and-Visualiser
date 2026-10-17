@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:singlefile": "vite build --config vite.singlefile.config.js",
-    "test": "node tests/test_fixes_and_pptx.mjs",
+    "test": "node tests/test_fixes_and_pptx.mjs && node tests/test_drive_sync.mjs",
     "lint": "oxlint",
     "preview": "vite preview"
   },

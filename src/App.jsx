@@ -18,6 +18,15 @@ import { AiAnalystDrawer } from './components/AiAnalystDrawer';
 import { DataModelingModal } from './components/DataModelingModal';
 import { AdvancedFilterModal } from './components/AdvancedFilterModal';
 import { BrandingModal } from './components/BrandingModal';
+import { DriveSyncModal } from './components/DriveSyncModal';
+import {
+  getStoredDirectoryHandle,
+  verifyDirectoryPermission,
+  getCachedFolderName,
+  saveWorkspaceToDrive,
+  downloadWorkspacePackage,
+  getAutoSyncPreference
+} from './services/driveSyncService';
 import { SAMPLE_DATASETS } from './services/sampleDatasets';
 import { cleanAndProfileDataset } from './services/fileParsers';
 import { evaluateCustomFormula, calculateKpiDelta } from './services/calculationEngine';
@@ -236,6 +245,12 @@ export default function App() {
   const [editingWidget, setEditingWidget] = useState(null);
   const [pendingAiSlide, setPendingAiSlide] = useState(null);
 
+  // Drive Sync & Workspace Storage State
+  const [isDriveSyncOpen, setIsDriveSyncOpen] = useState(false);
+  const [driveDirHandle, setDriveDirHandle] = useState(null);
+  const [driveFolderName, setDriveFolderName] = useState(() => getCachedFolderName());
+  const [autoSyncDrive, setAutoSyncDrive] = useState(() => getAutoSyncPreference());
+
   // Advanced Compound Filter Rules State
   const [compoundRules, setCompoundRules] = useState([]);
   const [compoundLogicOperator, setCompoundLogicOperator] = useState('AND');
@@ -329,6 +344,68 @@ export default function App() {
     }
     restoreLargeDatasetSession();
   }, [initialSession]);
+
+  // Attempt to restore persistent DirectoryHandle from IndexedDB on startup
+  useEffect(() => {
+    async function restoreDriveHandle() {
+      try {
+        const storedHandle = await getStoredDirectoryHandle();
+        if (storedHandle) {
+          const hasPerm = await verifyDirectoryPermission(storedHandle, false);
+          if (hasPerm) {
+            setDriveDirHandle(storedHandle);
+          }
+          setDriveFolderName(storedHandle.name);
+        }
+      } catch (err) {
+        console.warn('Failed to restore drive directory handle:', err);
+      }
+    }
+    restoreDriveHandle();
+  }, []);
+
+  // Background auto-backup to connected Drive folder when workspace changes
+  useEffect(() => {
+    if (!autoSyncDrive || !driveDirHandle) return;
+    const timeout = setTimeout(async () => {
+      try {
+        const statePayload = {
+          datasetMeta,
+          rawData,
+          columns,
+          columnProfiles,
+          dateColumn,
+          kpiCards,
+          widgets,
+          branding,
+          compoundRules,
+          compoundLogicOperator,
+          searchTerm,
+          activeFilters
+        };
+        const dsName = (datasetMeta?.name || 'Workspace').replace(/[^a-zA-Z0-9_-]/g, '_');
+        await saveWorkspaceToDrive(driveDirHandle, statePayload, `${dsName}_AutoBackup.omnidash`);
+      } catch (err) {
+        console.warn('Background auto-backup to Drive failed:', err);
+      }
+    }, 4000);
+    return () => clearTimeout(timeout);
+  }, [
+    autoSyncDrive,
+    driveDirHandle,
+    datasetMeta,
+    rawData,
+    columns,
+    columnProfiles,
+    dateColumn,
+    kpiCards,
+    widgets,
+    branding,
+    compoundRules,
+    compoundLogicOperator,
+    searchTerm,
+    activeFilters
+  ]);
 
   // Generate Smart Insights automatically
   const insights = useMemo(() => {
@@ -690,6 +767,47 @@ export default function App() {
     reader.readAsText(file);
   };
 
+  const handleRestoreWorkspace = (pkg) => {
+    if (!pkg) return;
+    try {
+      if (pkg.datasetMeta) {
+        setDatasetMeta(pkg.datasetMeta);
+      }
+      if (Array.isArray(pkg.rawData) && pkg.rawData.length > 0) {
+        setRawData(pkg.rawData);
+        const profile = cleanAndProfileDataset(pkg.rawData, pkg.datasetMeta?.name || 'Restored Dataset');
+        setColumns(pkg.columns && pkg.columns.length > 0 ? pkg.columns : profile.columns);
+        setColumnProfiles(pkg.columnProfiles && Object.keys(pkg.columnProfiles).length > 0 ? pkg.columnProfiles : profile.columnProfiles);
+        setDateColumn(pkg.dateColumn || profile.dateColumn || 'Date');
+      }
+      if (Array.isArray(pkg.kpiCards) && pkg.kpiCards.length > 0) {
+        setKpiCards(pkg.kpiCards);
+      }
+      if (Array.isArray(pkg.widgets) && pkg.widgets.length > 0) {
+        setWidgets(pkg.widgets);
+      }
+      if (pkg.branding) {
+        setBranding(pkg.branding);
+        saveBrandingConfig(pkg.branding);
+      }
+      if (Array.isArray(pkg.compoundRules)) {
+        setCompoundRules(pkg.compoundRules);
+      }
+      if (pkg.compoundLogicOperator) {
+        setCompoundLogicOperator(pkg.compoundLogicOperator);
+      }
+      if (pkg.activeFilters) {
+        setActiveFilters(pkg.activeFilters);
+      }
+      if (pkg.searchTerm !== undefined) {
+        setSearchTerm(pkg.searchTerm);
+      }
+      showToast('Workspace successfully restored from .omnidash package!', 'success');
+    } catch (err) {
+      showToast(`Error restoring workspace: ${err.message}`, 'error');
+    }
+  };
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Executive Navbar */}
@@ -716,6 +834,26 @@ export default function App() {
         onExportCsv={handleExportCsv}
         onExportAllChartsZip={handleExportAllChartsZip}
         onExportViewJson={handleExportViewJson}
+        onOpenDriveSync={() => setIsDriveSyncOpen(true)}
+        isDriveConnected={!!driveDirHandle}
+        driveFolderName={driveFolderName}
+        onSaveWorkspaceSnapshot={() => {
+          downloadWorkspacePackage({
+            datasetMeta,
+            rawData,
+            columns,
+            columnProfiles,
+            dateColumn,
+            kpiCards,
+            widgets,
+            branding,
+            compoundRules,
+            compoundLogicOperator,
+            searchTerm,
+            activeFilters
+          });
+          showToast('Workspace snapshot downloaded (.omnidash)', 'success');
+        }}
       />
 
       {/* Main Reporting Workspace Header & Tab Selector */}
@@ -1040,6 +1178,43 @@ export default function App() {
         currentTheme={theme}
         onSelectTheme={(t) => setTheme(t)}
       />
+
+      {/* Local Google Drive / OneDrive Sync & Backup Hub Modal */}
+      <DriveSyncModal
+        isOpen={isDriveSyncOpen}
+        onClose={() => setIsDriveSyncOpen(false)}
+        dirHandle={driveDirHandle}
+        folderName={driveFolderName}
+        onConnectFolder={(handle, name) => {
+          setDriveDirHandle(handle);
+          setDriveFolderName(name);
+        }}
+        onDisconnectFolder={() => {
+          setDriveDirHandle(null);
+          setDriveFolderName('');
+        }}
+        appState={{
+          datasetMeta,
+          rawData,
+          columns,
+          columnProfiles,
+          dateColumn,
+          kpiCards,
+          widgets,
+          branding,
+          compoundRules,
+          compoundLogicOperator,
+          searchTerm,
+          activeFilters
+        }}
+        onRestoreWorkspace={handleRestoreWorkspace}
+        onLoadDatasetFile={(parsed) => {
+          handleDatasetLoaded(parsed);
+          showToast(`Loaded ${parsed.data?.length || 0} rows from Drive file`, 'success');
+        }}
+        showToast={showToast}
+      />
+
       {/* Floating Status Notification Toast */}
       {toast && (
         <div

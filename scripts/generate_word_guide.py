@@ -371,13 +371,23 @@ def build_word_document():
         i += 1
         
     out_path = os.path.join("docs", "OmniDash_Executive_User_Guide.docx")
-    doc.save(out_path)
-    print(f"Successfully generated: {out_path} ({os.path.getsize(out_path)} bytes)")
+    try:
+        doc.save(out_path)
+        print(f"Successfully generated: {out_path} ({os.path.getsize(out_path)} bytes)")
+    except PermissionError:
+        out_path = os.path.join("docs", "OmniDash_Executive_User_Guide_v2.docx")
+        doc.save(out_path)
+        print(f"Original file was open in Word. Saved updated guide to: {out_path} ({os.path.getsize(out_path)} bytes)")
     
     # Also copy to OmniDash_Email_Package
     pkg_path = os.path.join("OmniDash_Email_Package", "OmniDash_Executive_User_Guide.docx")
-    doc.save(pkg_path)
-    print(f"Successfully saved to email package: {pkg_path}")
+    try:
+        doc.save(pkg_path)
+        print(f"Successfully saved to email package: {pkg_path}")
+    except PermissionError:
+        pkg_path = os.path.join("OmniDash_Email_Package", "OmniDash_Executive_User_Guide_v2.docx")
+        doc.save(pkg_path)
+        print(f"Email package file was open. Saved to: {pkg_path}")
 
 if __name__ == "__main__":
     build_word_document()

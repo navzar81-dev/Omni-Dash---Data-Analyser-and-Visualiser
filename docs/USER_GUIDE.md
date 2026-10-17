@@ -15,8 +15,9 @@
 6. [On-Device AI Business Analyst (WASM Engine)](#6-on-device-ai-business-analyst-wasm-engine)
 7. [Corporate Brand Master Template Studio](#7-corporate-brand-master-template-studio)
 8. [Presentation Studio & Boardroom Export](#8-presentation-studio--boardroom-export)
-9. [Workspace Persistence, Privacy & Performance Guidelines](#9-workspace-persistence-privacy--performance-guidelines)
-10. [Frequently Asked Questions (FAQ) & Troubleshooting](#10-frequently-asked-questions-faq--troubleshooting)
+9. [Local Drive Sync (Google Drive / OneDrive) & Workspace Hub](#9-local-drive-sync-google-drive--onedrive--workspace-hub)
+10. [Workspace Persistence, Privacy & Performance Guidelines](#10-workspace-persistence-privacy--performance-guidelines)
+11. [Frequently Asked Questions (FAQ) & Troubleshooting](#11-frequently-asked-questions-faq--troubleshooting)
 
 ---
 
@@ -291,9 +292,58 @@ Export Capabilities:
 
 ---
 
-## 9. Workspace Persistence, Privacy & Performance Guidelines
+## 9. Local Drive Sync (Google Drive / OneDrive) & Workspace Hub
 
-### 9.1 Data Capacity & Performance Guidelines
+OmniDash features native local cloud drive synchronization and one-click workspace packaging. This allows you to bind the application directly to your local **Google Drive** (`G:\My Drive` or `C:\Users\...\Google Drive`) or **Microsoft OneDrive** (`C:\Users\...\OneDrive`) folder without configuring API credentials or hosting servers.
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                          OmniDash Drive Hub                            │
+├───────────────────────┬────────────────────────┬───────────────────────┤
+│    Files on Drive     │   Export to Drive      │   Restore Workspace   │
+│                       │                        │                       │
+│ • Sales_2024.xlsx     │ [Save Snapshot .omnidash]  Drag-and-drop       │
+│ • Q3_Review.omnidash  │ [Save Filtered Excel]  │   .omnidash package   │
+│ • Deck_Export.pptx    │ [Save Deck .pptx]      │   for instant restore │
+└───────────────────────┴────────────────────────┴───────────────────────┘
+```
+
+### 9.1 How It Works (Behind the Scenes)
+1. **File System Access API (`window.showDirectoryPicker`)**:
+   - Built on modern Chromium web standards (supported in Chrome, Edge, Brave, Opera).
+   - When you click **Connect Local Drive Folder**, the browser prompts you to select a local directory on your drive.
+   - Selecting your local Google Drive or OneDrive folder grants OmniDash secure, sandboxed read/write permissions directly to the operating system's local filesystem mirror.
+2. **Persistent Directory Handle in IndexedDB**:
+   - The granted `FileSystemDirectoryHandle` is safely serialized and saved in a dedicated IndexedDB database (`OmniDash_Drive_Storage`).
+   - When you refresh the browser or relaunch the standalone HTML file, OmniDash automatically detects your previously connected Drive folder and verifies read/write permission without needing you to browse for it again.
+3. **One-Click File Ingestion & Picking**:
+   - The **Files on Drive** tab automatically scans your connected drive folder for supported business files (`.csv`, `.xlsx`, `.xls`, `.json`, `.pdf`, `.pptx`, `.omnidash`).
+   - Clicking **Load Dataset** directly streams the file into memory and auto-profiles it.
+   - Clicking **Restore Workspace** on an `.omnidash` file immediately loads the full analytics environment.
+
+### 9.2 Complete Workspace Packaging (`.omnidash`)
+Traditional dashboard tools export static CSV or Excel files, losing your calculated columns, custom widgets, compound filters, KPI targets, branding colors, and slide decks.
+
+OmniDash solves this with the `.omnidash` workspace package:
+* **What is contained in an `.omnidash` file?**
+  - Full raw dataset records and schema metadata
+  - Executive KPI scorecards, targets, and aggregations
+  - Custom reporting widgets, dimensions, measures, and chart types
+  - Corporate brand palette, logo, and title customizations
+  - Advanced compound SQL-like filter rules
+  - Complete Presentation Studio slide deck with speaker talking notes
+* **1-Click Portability**:
+  - Save an `.omnidash` snapshot to your Google Drive / OneDrive folder or download it to your PC.
+  - Send the file to a colleague or load it on another machine. Clicking **Restore Workspace** restores the exact dashboard state in milliseconds.
+* **Debounced Background Auto-Sync**:
+  - Enable the **Auto-save workspace snapshot to Drive** toggle in the Drive Hub.
+  - Every time you add a widget, modify a formula, adjust brand colors, or update filter rules, OmniDash debounces a background snapshot (`<Dataset>_AutoBackup.omnidash`) directly to your connected drive folder.
+
+---
+
+## 10. Workspace Persistence, Privacy & Performance Guidelines
+
+### 10.1 Data Capacity & Performance Guidelines
 OmniDash has been optimized for rapid in-memory processing. The following benchmarks are based on standard modern laptops (16 GB RAM, Chrome/Edge):
 
 | Dataset Size | Ingestion Time | Filter Response | Chart Redraw | Storage Mechanism |
@@ -302,14 +352,14 @@ OmniDash has been optimized for rapid in-memory processing. The following benchm
 | **10,000 – 100,000 rows** | < 0.8 seconds | Instant (< 20ms) | Smooth | IndexedDB |
 | **100,000 – 300,000 rows** | ~ 2.5 seconds | ~ 50ms | Optimized | IndexedDB (In-Memory Chunked) |
 
-### 9.2 Performance Best Practices:
+### 10.2 Performance Best Practices:
 1. **Memoized Aggregations**: Chart aggregations and profiling passes are wrapped in React `useMemo` hooks to prevent redundant re-calculations during typing.
 2. **Debounced Auto-Save**: Storage writes are delayed by 400ms following user input, preventing write bottlenecks on heavy search queries.
 3. **Hardware Acceleration**: Ensure hardware acceleration is enabled in your browser settings (`chrome://settings/system`) for smooth 60 FPS animation on complex scatter and area graphs.
 
 ---
 
-## 10. Frequently Asked Questions (FAQ) & Troubleshooting
+## 11. Frequently Asked Questions (FAQ) & Troubleshooting
 
 #### Q1: Does my data ever leave my computer?
 **No.** OmniDash has no backend servers, tracking telemetry, or remote databases. All data remains inside your browser's private sandbox. If you disconnect your internet cable, OmniDash continues to function with 100% feature parity.
