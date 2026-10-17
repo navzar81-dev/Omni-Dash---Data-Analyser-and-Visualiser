@@ -55,12 +55,52 @@ OmniDash implements a two-tier persistent storage layer:
 
 ### 2.1 Supported File Formats
 OmniDash provides a universal file ingestion pipeline that accepts:
-* **Excel Workbooks** (`.xlsx`, `.xls`): Automatically extracts the primary worksheet with multi-tab selection support.
+* **Excel Workbooks** (`.xlsx`, `.xls`, `.xlsm`, `.xlsb`): Full support for multi-worksheet workbooks, macro-enabled spreadsheets, and compressed binary workbooks with automated sheet discovery.
 * **Delimited Files** (`.csv`, `.tsv`, `.txt`): Powered by PapaParse with automatic delimiter inference (comma, tab, semicolon, pipe).
-* **Structured JSON** (`.json`): Flattens array-of-objects schemas automatically into clean tabular formats.
+* **Word Documents** (`.docx`): Automatically extracts embedded tables and structured data matrices from Word documents.
+* **PowerPoint Presentations** (`.pptx`): Extracts embedded slide tables and OpenXML data sheets.
 * **PDF Reports** (`.pdf`): Scans structured text tables from PDF documents and transforms them into analytical datasets.
+* **Structured JSON** (`.json`): Flattens array-of-objects schemas automatically into clean tabular formats.
 
-### 2.2 Built-In Sample Datasets
+### 2.2 Multi-Worksheet Recognition & Ingestion
+When an Excel workbook containing multiple worksheets is uploaded, OmniDash eliminates the limitation of defaulting solely to the first tab:
+* **Interactive Worksheet Selection**: An interactive **Worksheet Navigation Bar** appears inside the Upload Modal, displaying each sheet's name and estimated row count (e.g. `📄 Q1 Sales (~1,420 rows)`, `📄 Dim_Customers (~320 rows)`).
+* **Live Sheet Switching**: Clicking any worksheet tab immediately switches the preview table and statistical column profiles in real time without re-reading the file from disk.
+* **"Union All Sheets" Action**: For files partitioned into time slices or regional tabs (e.g., `Q1`, `Q2`, `Q3`, `Q4`), a single click on **Union All Sheets** appends all rows into a unified table while injecting a `_SheetName` column to track row-level source provenance.
+* **Relational Data Modeling Integration**: Secondary worksheets can be ingested directly into the **Data Modeling Studio** to perform in-memory Left, Inner, Right, and Full Outer Joins.
+
+### 2.3 Resilient Clean Data Engine: Handling Macros, Formats & Header Offsets
+Real-world enterprise spreadsheets frequently suffer from formatting anomalies, macros, and decorative banners that crash standard parsers. OmniDash incorporates a specialized resilient data cleaning pipeline:
+
+```mermaid
+graph TD
+    A[Raw Excel / CSV / PDF Buffer] --> B[Safe Reader: Bypasses VBA Macro Streams]
+    B --> C[Merged Cell Propagation: Unmerges Spanned Header Cells]
+    C --> D[Smart Banner Detector: Scans Top 15 Rows to Bypass Company Titles]
+    D --> E[Summary Footer Isolator: Excludes 'Total' Rows to Prevent Double-Counting]
+    E --> F[Value Sanitizer: Converts (1,200) to -1200, Sanitizes #REF! to null]
+    F --> G[Statistical Profiling: Measure vs Date vs Dimension Inference]
+```
+
+1. **VBA Macro Bypassing (`.xlsm` / `.xlsb`)**:
+   - Macro-enabled workbooks often trigger security warnings or parser failures. OmniDash's engine safely extracts cell data tables while completely ignoring the VBA bytecode stream (`vbaProject.bin`).
+2. **Smart Banner Header Detection**:
+   - Business spreadsheets frequently place company logos, title banners, or confidentiality notices across rows 1–3 (e.g., *"ACME Corp Financial Report"*), pushing the true column headers to row 4 or 5.
+   - The engine scans the first 15 rows using a scoring heuristic (evaluating string density, column distinctness, and subsequent row alignment) to automatically align the true header row and bypass decorative titles.
+3. **Accounting Negatives Normalization**:
+   - Financial P&L statements format negative values in parentheses (e.g., `(1,234.56)` or `($5,000.00)`), which JavaScript native parsing converts to `NaN`.
+   - OmniDash automatically parses accounting parentheses and converts them into true floating-point negatives (`-1234.56`, `-5000.00`).
+4. **Currency & Special Character Stripping**:
+   - International currency symbols (`$`, `€`, `£`, `¥`, `₹`, `₽`, `₩`, `CHF`), percentage signs (`%`), thousands commas, and invisible unicode whitespace (`\u00A0`, `\u200B`) are sanitized automatically.
+5. **Excel Formula Error Sanitization**:
+   - Broken formulas resulting in `#REF!`, `#DIV/0!`, `#N/A`, `#VALUE!`, `#NAME?`, `#NUM!`, or `#NULL!` are converted cleanly to `null` so downstream charts, KPIs, and calculated formulas do not fail.
+6. **Summary / Grand Total Footer Isolation**:
+   - Tables frequently conclude with a summary row (e.g. `Total`, `Grand Total`, or `Average`). Leaving these rows in the dataset inflates aggregations by 2x.
+   - OmniDash identifies footer summary rows, logs them in the cleaning audit, and isolates them from the analytical dataset to guarantee exact mathematical accuracy.
+7. **Merged Header Cell Propagation**:
+   - Merged header cells (such as "Q1 Actuals" merged across 3 sub-columns) are automatically unmerged and replicated across child column ranges.
+
+### 2.4 Built-In Sample Datasets
 For instant testing and evaluation, OmniDash includes four pre-loaded enterprise datasets:
 1. **Enterprise Financials**: Quarterly revenue, cost of goods sold (COGS), operating expenses (OPEX), EBITDA, net margins, regions, and business divisions.
 2. **SaaS Product Analytics**: Monthly recurring revenue (MRR), churn rate, customer acquisition cost (CAC), lifetime value (LTV), user seats, and engagement tiers.
@@ -68,24 +108,6 @@ For instant testing and evaluation, OmniDash includes four pre-loaded enterprise
 4. **Manufacturing & Supply Chain**: Production yields, defect rates, machine downtime, warehouse utilization, and operational cycle times.
 
 ![Data Profiler](./screenshots/data_profiler_dark.png)
-
-### 2.3 Behind the Scenes: Automated Profiling & Data Cleaning Pipeline
-When a file is dropped into OmniDash, `cleanAndProfileDataset` executes a multi-pass heuristic pipeline:
-
-```mermaid
-graph TD
-    A[Raw File / Buffer] --> B[Universal Parser: PapaParse / SheetJS / PDF.js]
-    B --> C[Column Normalization & Header Clean]
-    C --> D[Type Inference: Numeric vs Date vs Categorical]
-    D --> E[Currency & Accounting Sanitizer: Remove $, €, commas, (1200) -> -1200]
-    E --> F[Statistical Profiling: Cardinality, Min/Max, Mean, Missing %]
-    F --> G[Smart Suggestion Engine: Primary Date Col & Recommended Metrics]
-```
-
-1. **Header Sanitization**: Trims whitespace, cleans control characters, and deduplicates identical header names.
-2. **Numeric Sanitization**: Automatically strips currency signs (`$`, `€`, `£`, `¥`), percentage symbols (`%`), and thousand separators (`,`). Parses accounting negatives formatted in parentheses (e.g., `(2,450.00)` is correctly parsed into `-2450`).
-3. **Date Detection**: Evaluates temporal patterns (ISO 8601, `YYYY-MM-DD`, `MM/DD/YYYY`, `DD-MMM-YYYY`) and assigns the primary chronological axis for time-series charts.
-4. **Cardinality & Distribution**: Calculates null counts, unique distinct values, min, max, average, and recommends whether a column should serve as an analytical **Dimension** (categorical bucket) or a **Measure** (aggregatable metric).
 
 ---
 
@@ -216,6 +238,16 @@ Waterfall charts illustrate how an initial balance moves up and down across peri
 #### **C. Pivot Table Averages**
 In cross-tabular matrices, a common software bug is taking the "average of averages" across table cells.
 * **Behind the Scenes**: When `AVG` mode is selected in the OmniDash Pivot Table, the row totals, column totals, and grand total aggregate across the **raw underlying data points** for that row or column, guaranteeing mathematically rigorous enterprise accounting.
+
+---
+
+### 5.3 Executive Ergonomics & High-Contrast Visual Design
+* **High-Contrast Black Typography (Light Theme)**:
+  - Designed for high-glare environments, executive projectors, and printed handouts, the Light Theme applies pure solid black (`#000000 !important`) typography across all headers (`h1`–`h6`), descriptive sub-headers, KPI titles, modal labels, and table column headers. This eliminates low-contrast grey text and ensures crisp optical legibility.
+* **Unified Accordion Action Toolbar**:
+  - The primary navbar features expanding accordion action tabs (*Upload Data*, *Presentation Studio*, *Calculated Field*, *Data Profiler*, *Data Modeling*, *Smart Insights*, *AI Analyst*, *Drive Sync*, *Export*).
+  - **Collapsed State**: Renders in an understated, subtle brand blue tone (`rgba(99, 102, 241, 0.12)`) with a clean blue icon indicator.
+  - **Expanded & Active State**: Across **both Light and Dark themes**, hovering or expanding an action tab activates a uniform royal blue gradient (`#6366f1` / `#4f46e5`) with solid white font (`#ffffff`) and white icons, matching the visual identity of the active *Dashboard Workspace* pill.
 
 ---
 
