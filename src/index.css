@@ -35,19 +35,149 @@
 [data-theme='light'] {
   --bg-primary: #f8fafc;
   --bg-secondary: #f1f5f9;
-  --bg-card: rgba(255, 255, 255, 0.88);
+  --bg-card: rgba(255, 255, 255, 0.95);
   --bg-card-hover: #ffffff;
   --bg-input: #ffffff;
-  --border-subtle: rgba(0, 0, 0, 0.08);
-  --border-hover: rgba(99, 102, 241, 0.4);
+  --border-subtle: rgba(0, 0, 0, 0.12);
+  --border-hover: rgba(99, 102, 241, 0.45);
   --border-active: #6366f1;
 
-  --text-main: #0f172a;
-  --text-muted: #64748b;
-  --text-faint: #94a3b8;
+  /* Black High-Contrast Typography for Light Theme (No light grey) */
+  --text-main: #000000;
+  --text-muted: #000000;
+  --text-faint: #1e293b;
 
-  --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.06);
+  --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.08);
   --shadow-glow: 0 0 20px -5px rgba(99, 102, 241, 0.2);
+}
+
+/* =====================================================================
+   Light Theme Contrast Optimization: Black font for Tabs, Headers & Sub-headers
+   ===================================================================== */
+
+/* 1. All Headers in Light Theme */
+[data-theme='light'] h1,
+[data-theme='light'] h2,
+[data-theme='light'] h3,
+[data-theme='light'] h4,
+[data-theme='light'] h5,
+[data-theme='light'] h6,
+[data-theme='light'] .workspace-title-section h1,
+[data-theme='light'] .modal-content h1,
+[data-theme='light'] .modal-content h2,
+[data-theme='light'] .modal-content h3,
+[data-theme='light'] .widget-card-panel h3,
+[data-theme='light'] .presentation-studio-header h2,
+[data-theme='light'] .data-table-container h3,
+[data-theme='light'] #slide-canvas-preview h1,
+[data-theme='light'] #slide-canvas-preview h2,
+[data-theme='light'] #slide-canvas-preview h3 {
+  color: #000000 !important;
+}
+
+/* 2. All Sub-headers, Subtitles & Descriptions in Light Theme */
+[data-theme='light'] .workspace-title-section p,
+[data-theme='light'] .navbar-brand-subtitle,
+[data-theme='light'] .modal-content p,
+[data-theme='light'] .modal-subtitle,
+[data-theme='light'] .data-table-container p,
+[data-theme='light'] .presentation-studio-header p,
+[data-theme='light'] #slide-canvas-preview p,
+[data-theme='light'] .widget-card-panel div[style*="color: var(--text-muted)"],
+[data-theme='light'] .widget-card-panel p,
+[data-theme='light'] .kpi-card-panel span[style*="text-transform: uppercase"],
+[data-theme='light'] .kpi-card-panel span[style*="textTransform: uppercase"],
+[data-theme='light'] .executive-kpis-grid span[style*="text-transform: uppercase"],
+[data-theme='light'] .executive-kpis-grid span[style*="textTransform: uppercase"],
+[data-theme='light'] .global-filter-bar label,
+[data-theme='light'] .smart-query-bar p,
+[data-theme='light'] .smart-query-bar span {
+  color: #000000 !important;
+  font-weight: 600;
+}
+
+/* 3. Navigation & Workspace Tabs in Light Theme */
+[data-theme='light'] .workspace-tabs-container {
+  background: rgba(0, 0, 0, 0.05) !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+}
+
+[data-theme='light'] .workspace-tabs-container button {
+  color: #000000 !important;
+  font-weight: 700 !important;
+}
+
+[data-theme='light'] .workspace-tabs-container button span {
+  color: #000000 !important;
+}
+
+[data-theme='light'] .workspace-tabs-container button svg {
+  color: #000000 !important;
+  stroke: #000000 !important;
+}
+
+/* Maintain clean high-contrast active workspace tab styling */
+[data-theme='light'] .workspace-tabs-container button[style*="background: rgb(99, 102, 241)"],
+[data-theme='light'] .workspace-tabs-container button[style*="background: #6366f1"] {
+  background: #4f46e5 !important;
+  color: #ffffff !important;
+}
+
+[data-theme='light'] .workspace-tabs-container button[style*="background: rgb(99, 102, 241)"] span,
+[data-theme='light'] .workspace-tabs-container button[style*="background: #6366f1"] span,
+[data-theme='light'] .workspace-tabs-container button[style*="background: rgb(99, 102, 241)"] svg,
+[data-theme='light'] .workspace-tabs-container button[style*="background: #6366f1"] svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+/* Inactive button borders and backgrounds in workspace tabs for light theme */
+[data-theme='light'] .workspace-tabs-container button:not([style*="background: rgb(99, 102, 241)"]):not([style*="background: #6366f1"]) {
+  background: rgba(0, 0, 0, 0.04) !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+}
+
+/* Modal Tab Bars & Inactive Tabs in Light Theme */
+[data-theme='light'] [role="tab"],
+[data-theme='light'] button[role="tab"],
+[data-theme='light'] .tab-btn,
+[data-theme='light'] .modal-content div[style*="borderBottom"] > button,
+[data-theme='light'] .modal-content div[style*="border-bottom"] > button {
+  color: #000000 !important;
+  font-weight: 700 !important;
+}
+
+/* Inactive Tab Labels in Modal Tab Bars */
+[data-theme='light'] .modal-content div[style*="borderBottom"] > button span,
+[data-theme='light'] .modal-content div[style*="border-bottom"] > button span {
+  color: #000000 !important;
+}
+
+/* Navbar Accordion Tabs & Labels in Light Theme */
+[data-theme='light'] .nav-accordion-btn {
+  color: #000000 !important;
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.14);
+  font-weight: 700;
+}
+
+[data-theme='light'] .nav-accordion-label span {
+  color: #000000 !important;
+  font-weight: 700;
+}
+
+[data-theme='light'] .nav-accordion-btn:hover,
+[data-theme='light'] .nav-accordion-btn.is-active {
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.25);
+}
+
+/* Table Column Headers in Light Theme */
+[data-theme='light'] .data-table-container th,
+[data-theme='light'] .data-table-container th span,
+[data-theme='light'] .data-table-container th div {
+  color: #000000 !important;
+  font-weight: 700 !important;
 }
 
 [data-theme='emerald'] {

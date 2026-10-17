@@ -888,9 +888,10 @@ export default function App() {
             className="btn btn-sm"
             style={{
               background: activeTab === 'dashboard' ? '#6366f1' : 'transparent',
-              color: activeTab === 'dashboard' ? '#ffffff' : 'var(--text-muted)',
+              color: activeTab === 'dashboard' ? '#ffffff' : (theme === 'light' ? '#000000' : 'var(--text-muted)'),
               border: 'none',
-              gap: '6px'
+              gap: '6px',
+              fontWeight: 700
             }}
           >
             <BarChart2 size={14} />
@@ -904,14 +905,15 @@ export default function App() {
             }}
             className="btn btn-sm"
             style={{
-              background: 'rgba(99, 102, 241, 0.12)',
-              color: '#a5b4fc',
-              border: '1px solid rgba(99, 102, 241, 0.25)',
-              gap: '6px'
+              background: theme === 'light' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(99, 102, 241, 0.12)',
+              color: theme === 'light' ? '#000000' : '#a5b4fc',
+              border: theme === 'light' ? '1px solid rgba(0, 0, 0, 0.15)' : '1px solid rgba(99, 102, 241, 0.25)',
+              gap: '6px',
+              fontWeight: 700
             }}
             title="Create a new custom reporting visualization widget"
           >
-            <PlusCircle size={14} color="#818cf8" />
+            <PlusCircle size={14} color={theme === 'light' ? '#000000' : '#818cf8'} />
             <span>Add Reporting Widget</span>
           </button>
           <button
@@ -919,9 +921,10 @@ export default function App() {
             className="btn btn-sm"
             style={{
               background: activeTab === 'grid' ? '#6366f1' : 'transparent',
-              color: activeTab === 'grid' ? '#ffffff' : 'var(--text-muted)',
+              color: activeTab === 'grid' ? '#ffffff' : (theme === 'light' ? '#000000' : 'var(--text-muted)'),
               border: 'none',
-              gap: '6px'
+              gap: '6px',
+              fontWeight: 700
             }}
           >
             <Table size={14} />
@@ -931,26 +934,28 @@ export default function App() {
             onClick={() => setIsPresentationOpen(true)}
             className="btn btn-sm"
             style={{
-              background: 'rgba(245, 158, 11, 0.15)',
-              color: '#fbbf24',
-              border: '1px solid rgba(245, 158, 11, 0.3)',
-              gap: '6px'
+              background: theme === 'light' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(245, 158, 11, 0.15)',
+              color: theme === 'light' ? '#000000' : '#fbbf24',
+              border: theme === 'light' ? '1px solid rgba(0, 0, 0, 0.15)' : '1px solid rgba(245, 158, 11, 0.3)',
+              gap: '6px',
+              fontWeight: 700
             }}
           >
-            <Presentation size={14} />
+            <Presentation size={14} color={theme === 'light' ? '#000000' : '#fbbf24'} />
             <span>Slide Deck Studio</span>
           </button>
           <button
             onClick={() => setIsAiAnalystOpen(true)}
             className="btn btn-sm"
             style={{
-              background: 'rgba(16, 185, 129, 0.15)',
-              color: '#34d399',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-              gap: '6px'
+              background: theme === 'light' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(16, 185, 129, 0.15)',
+              color: theme === 'light' ? '#000000' : '#34d399',
+              border: theme === 'light' ? '1px solid rgba(0, 0, 0, 0.15)' : '1px solid rgba(16, 185, 129, 0.3)',
+              gap: '6px',
+              fontWeight: 700
             }}
           >
-            <BarChart2 size={14} color="#34d399" />
+            <BarChart2 size={14} color={theme === 'light' ? '#000000' : '#34d399'} />
             <span>AI Analyst</span>
           </button>
         </div>
