@@ -9,6 +9,8 @@
 [![Privacy First](https://img.shields.io/badge/Privacy-100%25%20Offline-10b981)](https://github.com/navzar81-dev/Omni-Dash---Data-Analyser-and-Visualiser)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+> 📖 **Complete Documentation**: Explore the comprehensive [End-to-End User Guide & Architecture Reference](docs/USER_GUIDE.md) for full feature walkthroughs, statistical formulas, and behind-the-scenes mechanics.
+
 ---
 
 ## 📸 Key Screenshots & Interface Preview
