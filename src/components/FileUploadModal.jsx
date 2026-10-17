@@ -11,9 +11,18 @@ import {
   Minimize2,
   FileCode,
   ArrowRight,
-  ClipboardList
+  ClipboardList,
+  Layers,
+  ShieldCheck,
+  Combine,
+  Sparkles
 } from 'lucide-react';
-import { parseUploadedFile, cleanAndProfileDataset } from '../services/fileParsers';
+import {
+  parseUploadedFile,
+  cleanAndProfileDataset,
+  parseWorkbookSheet,
+  combineWorkbookSheets
+} from '../services/fileParsers';
 import Papa from 'papaparse';
 
 export function FileUploadModal({ isOpen, onClose, onDatasetLoaded }) {
@@ -49,6 +58,28 @@ export function FileUploadModal({ isOpen, onClose, onDatasetLoaded }) {
       setError(err.message || 'Failed to process file. Please ensure it contains tabular rows.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSwitchWorksheet = (sheetName) => {
+    if (!previewData?._workbook) return;
+    try {
+      const sheetDataset = parseWorkbookSheet(previewData._workbook, sheetName, previewData._fileName || 'Workbook');
+      setPreviewData(sheetDataset);
+      setDatasetName(sheetDataset.name);
+    } catch (err) {
+      setError(`Failed to switch to sheet "${sheetName}": ${err.message}`);
+    }
+  };
+
+  const handleUnionAllSheets = () => {
+    if (!previewData?._workbook || !previewData.availableSheets) return;
+    try {
+      const combined = combineWorkbookSheets(previewData._workbook, previewData.availableSheets, previewData._fileName || 'Workbook');
+      setPreviewData(combined);
+      setDatasetName(combined.name);
+    } catch (err) {
+      setError(`Failed to combine worksheets: ${err.message}`);
     }
   };
 
@@ -258,7 +289,7 @@ export function FileUploadModal({ isOpen, onClose, onDatasetLoaded }) {
               type="file"
               ref={fileInputRef}
               onChange={handleFileChange}
-              accept=".csv,.xlsx,.xls,.docx,.pptx,.pdf,.tsv,.txt"
+              accept=".csv,.xlsx,.xls,.xlsm,.xlsb,.docx,.pptx,.pdf,.tsv,.txt"
               style={{ display: 'none' }}
             />
             <div style={{
@@ -368,6 +399,128 @@ export function FileUploadModal({ isOpen, onClose, onDatasetLoaded }) {
                   style={{ flex: 1 }}
                 />
               </div>
+            </div>
+
+            {/* Multi-Worksheet Selector (when workbook contains > 1 sheet) */}
+            {previewData.availableSheets && previewData.availableSheets.length > 1 && (
+              <div style={{
+                background: 'rgba(99, 102, 241, 0.08)',
+                border: '1px solid rgba(99, 102, 241, 0.25)',
+                borderRadius: '12px',
+                padding: '14px',
+                marginBottom: '16px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Layers size={16} color="#818cf8" />
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>
+                      Worksheets Detected ({previewData.availableSheets.length} Sheets)
+                    </span>
+                    <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                      Click any sheet to preview or union all
+                    </span>
+                  </div>
+
+                  {/* Union / Combine All Sheets Button */}
+                  <button
+                    className={`btn btn-sm ${previewData.selectedSheet === 'All Combined' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={handleUnionAllSheets}
+                    title="Combine rows from all worksheets into one unified dataset with a _SheetName column"
+                    style={{ gap: '6px', fontSize: '0.74rem', padding: '4px 10px' }}
+                  >
+                    <Combine size={14} />
+                    <span>Union All Sheets</span>
+                  </button>
+                </div>
+
+                {/* Sheet Tabs */}
+                <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+                  {previewData.availableSheets.map(sName => {
+                    const isSelected = previewData.selectedSheet === sName;
+                    const meta = previewData.allSheetsMeta?.find(m => m.name === sName);
+                    return (
+                      <button
+                        key={sName}
+                        onClick={() => handleSwitchWorksheet(sName)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          background: isSelected ? 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)' : 'rgba(255, 255, 255, 0.05)',
+                          color: isSelected ? '#ffffff' : 'var(--text-main)',
+                          border: isSelected ? '1px solid #4f46e5' : '1px solid var(--border-subtle)',
+                          borderRadius: '8px',
+                          padding: '6px 12px',
+                          cursor: 'pointer',
+                          fontSize: '0.78rem',
+                          fontWeight: isSelected ? 700 : 500,
+                          whiteSpace: 'nowrap',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        <FileSpreadsheet size={14} color={isSelected ? '#ffffff' : '#818cf8'} />
+                        <span>{sName}</span>
+                        {meta && (
+                          <span style={{
+                            fontSize: '0.66rem',
+                            padding: '1px 5px',
+                            borderRadius: '999px',
+                            background: isSelected ? 'rgba(255, 255, 255, 0.25)' : 'rgba(99, 102, 241, 0.15)',
+                            color: isSelected ? '#ffffff' : '#818cf8'
+                          }}>
+                            ~{meta.estimatedRows} rows
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Clean Data Engine Audit Badges */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              flexWrap: 'wrap',
+              padding: '8px 12px',
+              background: 'rgba(16, 185, 129, 0.05)',
+              border: '1px solid rgba(16, 185, 129, 0.2)',
+              borderRadius: '8px',
+              marginBottom: '16px',
+              fontSize: '0.74rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 700, color: '#10b981' }}>
+                <ShieldCheck size={14} />
+                <span>Clean Data Engine:</span>
+              </div>
+              <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '2px 6px' }}>
+                ✓ Macros & formulas safely bypassed
+              </span>
+              <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '2px 6px' }}>
+                ✓ Currency & symbols normalized
+              </span>
+              {previewData.cleaningAudit?.cleanedNegativesCount > 0 && (
+                <span className="badge badge-indigo" style={{ fontSize: '0.68rem', padding: '2px 6px' }}>
+                  ✓ {previewData.cleaningAudit.cleanedNegativesCount} accounting negatives parsed
+                </span>
+              )}
+              {previewData.cleaningAudit?.skippedBannerRows > 0 && (
+                <span className="badge badge-indigo" style={{ fontSize: '0.68rem', padding: '2px 6px' }}>
+                  ✓ {previewData.cleaningAudit.skippedBannerRows} banner title rows auto-aligned
+                </span>
+              )}
+              {previewData.cleaningAudit?.sanitizedErrorsCount > 0 && (
+                <span className="badge badge-amber" style={{ fontSize: '0.68rem', padding: '2px 6px' }}>
+                  ✓ {previewData.cleaningAudit.sanitizedErrorsCount} formula errors sanitized
+                </span>
+              )}
+              {previewData.cleaningAudit?.excludedSummaryRowsCount > 0 && (
+                <span className="badge badge-cyan" style={{ fontSize: '0.68rem', padding: '2px 6px' }}>
+                  ✓ Summary totals isolated from double-counting
+                </span>
+              )}
             </div>
 
             {/* Inferred Column Profiles */}

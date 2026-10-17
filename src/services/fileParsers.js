@@ -9,9 +9,64 @@ if (typeof window !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
 }
 
 /**
+ * Sanitizes and cleans a single cell value, resolving accounting negatives,
+ * currency strings, percentages, Excel formula errors, and whitespace quirks.
+ */
+export function sanitizeAndCleanValue(val, audit = null) {
+  if (val === undefined || val === null) {
+    return null;
+  }
+  if (typeof val === 'number') {
+    return isNaN(val) ? null : val;
+  }
+  if (val instanceof Date) {
+    return !isNaN(val.getTime()) ? val.toISOString().split('T')[0] : null;
+  }
+
+  let str = String(val);
+  // Replace non-breaking (\u00A0), zero-width (\u200B), and byte order mark (\uFEFF) spaces
+  str = str.replace(/[\u00A0\u200B\uFEFF]/g, ' ').trim();
+  if (str === '') return null;
+
+  const upper = str.toUpperCase();
+
+  // Excel formula error constants & common missing data tags
+  if ([
+    '#N/A', '#VALUE!', '#REF!', '#DIV/0!', '#NUM!', '#NAME?', '#NULL!',
+    '#N/A!', 'NULL', 'UNDEFINED', 'NAN', 'N/A', 'NA', 'NONE', '-'
+  ].includes(upper)) {
+    if (audit) audit.sanitizedErrorsCount = (audit.sanitizedErrorsCount || 0) + 1;
+    return null;
+  }
+
+  // Accounting Negatives: (1,234.56) or ($1,234.56) or ( 500 ) or (12.5%)
+  const accountingMatch = str.match(/^\s*\(\s*([^()]+)\s*\)\s*$/);
+  if (accountingMatch) {
+    const inner = accountingMatch[1];
+    const numCandidate = inner.replace(/[$€£¥₹₽₩CHF\s,%]/g, '');
+    if (numCandidate !== '' && !isNaN(Number(numCandidate))) {
+      if (audit) audit.cleanedNegativesCount = (audit.cleanedNegativesCount || 0) + 1;
+      return -Number(numCandidate);
+    }
+  }
+
+  // Standard numbers with currency symbols, percentages, or thousand separators
+  // e.g. "$1,234.56", "€ 450", "12.5%", "1,000,000"
+  const stripped = str.replace(/[$€£¥₹₽₩CHF\s,%]/g, '');
+  if (stripped !== '' && !isNaN(Number(stripped)) && !/^[A-Za-z]/.test(str)) {
+    // Avoid accidentally casting ISO date substrings (e.g. "2024-05") to raw numbers
+    if (!/^\d{4}-\d{2}(-\d{2})?$/.test(str) && !/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(str)) {
+      return Number(stripped);
+    }
+  }
+
+  return str;
+}
+
+/**
  * Normalizes an array of raw objects/rows into a clean tabular dataset
  */
-export function cleanAndProfileDataset(rows, datasetName = 'Imported Dataset') {
+export function cleanAndProfileDataset(rows, datasetName = 'Imported Dataset', audit = {}) {
   if (!Array.isArray(rows) || rows.length === 0) {
     throw new Error('No valid tabular data rows found.');
   }
@@ -58,7 +113,7 @@ export function cleanAndProfileDataset(rows, datasetName = 'Imported Dataset') {
   const numCols = columns.length;
   const numRows = filtered.length;
 
-  // 2. Initialize column statistic accumulators for a single-pass profiling
+  // 2. Initialize column statistic accumulators for single-pass profiling
   const colStats = new Array(numCols);
   for (let c = 0; c < numCols; c++) {
     colStats[c] = {
@@ -80,22 +135,7 @@ export function cleanAndProfileDataset(rows, datasetName = 'Imported Dataset') {
     for (let c = 0; c < numCols; c++) {
       const col = columns[c];
       const val = row[col];
-      let cleanVal = null;
-
-      if (val === undefined || val === null || val === '') {
-        cleanVal = null;
-      } else if (typeof val === 'number') {
-        cleanVal = val;
-      } else {
-        const strVal = String(val).trim();
-        // Check if string is a number (handling currency symbols, percentages, commas)
-        const numericCandidate = strVal.replace(/[$,€£%]/g, '').replace(/,/g, '');
-        if (numericCandidate !== '' && !isNaN(Number(numericCandidate))) {
-          cleanVal = Number(numericCandidate);
-        } else {
-          cleanVal = strVal;
-        }
-      }
+      const cleanVal = sanitizeAndCleanValue(val, audit);
 
       cleanRow[col] = cleanVal;
 
@@ -147,62 +187,295 @@ export function cleanAndProfileDataset(rows, datasetName = 'Imported Dataset') {
     columnProfiles,
     data: normalizedData,
     rowCount: numRows,
-    dateColumn: columnProfiles.find(c => c.type === 'date')?.name || columns[0]
+    dateColumn: columnProfiles.find(c => c.type === 'date')?.name || columns[0],
+    cleaningAudit: audit
   };
 }
 
 /**
- * Parse CSV, TSV, or TXT
+ * Detects the true header row from a 2D matrix of worksheet cells, skipping
+ * top banner titles, empty rows, and isolating summary/total footer rows.
  */
-export async function parseCsvFile(file) {
-  return new Promise((resolve, reject) => {
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: 'greedy',
-      dynamicTyping: true,
-      transformHeader: h => String(h || '').trim(),
-      complete: (results) => {
-        try {
-          if (!results.data || results.data.length === 0) {
-            reject(new Error('CSV file has no data.'));
-            return;
+export function detectTrueHeaderAndData(rawMatrix, worksheet = null, audit = {}) {
+  if (!Array.isArray(rawMatrix) || rawMatrix.length === 0) {
+    throw new Error('Worksheet contains no data rows.');
+  }
+
+  // Unmerge / replicate merged cells across spanned headers if merges exist
+  if (worksheet && worksheet['!merges'] && Array.isArray(worksheet['!merges'])) {
+    worksheet['!merges'].forEach(range => {
+      const startCell = XLSX.utils.encode_cell(range.s);
+      const val = worksheet[startCell];
+      if (val && val.v !== undefined) {
+        for (let r = range.s.r; r <= range.e.r; r++) {
+          for (let c = range.s.c; c <= range.e.c; c++) {
+            const key = XLSX.utils.encode_cell({ r, c });
+            if (!worksheet[key]) {
+              worksheet[key] = { ...val };
+            }
           }
-          const clean = cleanAndProfileDataset(results.data, file.name.replace(/\.[^/.]+$/, ''));
-          resolve(clean);
-        } catch (err) {
-          reject(err);
         }
-      },
-      error: (err) => reject(new Error(`Failed to parse CSV: ${err.message}`))
+      }
     });
-  });
+  }
+
+  const maxScanRows = Math.min(rawMatrix.length, 15);
+  let bestHeaderIndex = 0;
+  let bestScore = -1;
+  let detectedTitle = null;
+
+  for (let r = 0; r < maxScanRows; r++) {
+    const row = rawMatrix[r];
+    if (!Array.isArray(row)) continue;
+
+    const nonEmpties = row.filter(c => c !== null && c !== undefined && String(c).trim() !== '');
+    if (nonEmpties.length === 0) continue;
+
+    // Single-cell top banners (e.g. "COMPANY CONFIDENTIAL REPORT")
+    if (nonEmpties.length === 1 && r < 4) {
+      if (!detectedTitle) detectedTitle = String(nonEmpties[0]).trim();
+      continue;
+    }
+
+    // Header candidate heuristic: mostly strings, distinct names, subsequent row has data
+    const stringCount = nonEmpties.filter(c => typeof c === 'string' && isNaN(Number(c))).length;
+    const distinctStrings = new Set(nonEmpties.map(c => String(c).trim().toLowerCase())).size;
+    const nextRow = rawMatrix[r + 1];
+    const hasNextRowData = nextRow && nextRow.some(c => c !== null && c !== undefined && String(c).trim() !== '');
+
+    const score = (nonEmpties.length * 2) + (distinctStrings * 4) + (stringCount * 2) + (hasNextRowData ? 6 : -10);
+
+    if (score > bestScore && nonEmpties.length >= 2) {
+      bestScore = score;
+      bestHeaderIndex = r;
+    }
+  }
+
+  if (bestHeaderIndex > 0) {
+    audit.skippedBannerRows = bestHeaderIndex;
+  }
+
+  // Construct deduplicated, clean column names
+  const rawHeaderRow = rawMatrix[bestHeaderIndex] || [];
+  const seenCols = new Map();
+  const headers = [];
+
+  for (let c = 0; c < rawHeaderRow.length; c++) {
+    let colName = rawHeaderRow[c] !== null && rawHeaderRow[c] !== undefined ? String(rawHeaderRow[c]).trim() : '';
+    if (!colName) colName = `Column_${c + 1}`;
+    
+    // Deduplicate identical column headers
+    if (seenCols.has(colName)) {
+      const count = seenCols.get(colName) + 1;
+      seenCols.set(colName, count);
+      headers.push(`${colName}_${count}`);
+    } else {
+      seenCols.set(colName, 1);
+      headers.push(colName);
+    }
+  }
+
+  // Build row objects starting after header row
+  const dataRows = [];
+  const excludedSummaryRows = [];
+
+  for (let r = bestHeaderIndex + 1; r < rawMatrix.length; r++) {
+    const row = rawMatrix[r];
+    if (!Array.isArray(row)) continue;
+
+    const nonEmpties = row.filter(c => c !== null && c !== undefined && String(c).trim() !== '');
+    if (nonEmpties.length === 0) continue;
+
+    // Check for footer summary / grand total rows
+    const firstTextCell = String(nonEmpties[0] || '').trim().toLowerCase();
+    const isSummaryRow = /^(total|grand total|overall total|subtotal|summary|average)s?([\s/:\-_].*)?$/i.test(firstTextCell);
+
+    const rowObj = {};
+    for (let c = 0; c < headers.length; c++) {
+      rowObj[headers[c]] = row[c] !== undefined ? row[c] : null;
+    }
+
+    if (isSummaryRow && r >= rawMatrix.length - 3) {
+      excludedSummaryRows.push(rowObj);
+      continue;
+    }
+
+    dataRows.push(rowObj);
+  }
+
+  if (excludedSummaryRows.length > 0) {
+    audit.excludedSummaryRowsCount = excludedSummaryRows.length;
+  }
+
+  return {
+    headers,
+    dataRows,
+    detectedTitle,
+    bestHeaderIndex
+  };
 }
 
 /**
- * Parse Excel (.xlsx, .xls)
+ * Inspect an Excel workbook and return metadata for all available sheets
+ * (names, estimated row counts, dimensions, and in-memory workbook reference).
  */
-export async function parseExcelFile(file, sheetIndex = 0) {
+export async function inspectExcelWorkbook(file) {
   const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
-  
+  // Safe read ignoring VBA macro streams
+  const workbook = XLSX.read(buffer, {
+    type: 'array',
+    cellDates: true,
+    cellFormula: true,
+    cellHTML: false
+  });
+
   if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
     throw new Error('Excel workbook contains no sheets.');
   }
 
-  const sheetName = workbook.SheetNames[sheetIndex] || workbook.SheetNames[0];
+  const sheetsMeta = workbook.SheetNames.map((name, idx) => {
+    const ws = workbook.Sheets[name];
+    let rowEstimate = 0;
+    if (ws && ws['!ref']) {
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      rowEstimate = Math.max(0, range.e.r - range.s.r);
+    }
+    return {
+      index: idx,
+      name,
+      estimatedRows: rowEstimate
+    };
+  });
+
+  return {
+    workbook,
+    sheetNames: workbook.SheetNames,
+    sheetsMeta,
+    fileName: file.name
+  };
+}
+
+/**
+ * Parses a specific worksheet from an in-memory XLSX workbook object
+ */
+export function parseWorkbookSheet(workbook, sheetIndexOrName = 0, fileName = 'Workbook', options = {}) {
+  if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+    throw new Error('Invalid workbook provided.');
+  }
+
+  const sheetName = typeof sheetIndexOrName === 'string'
+    ? sheetIndexOrName
+    : (workbook.SheetNames[sheetIndexOrName] || workbook.SheetNames[0]);
+
   const worksheet = workbook.Sheets[sheetName];
-  
-  // Convert worksheet to JSON array of objects
-  const rawRows = XLSX.utils.sheet_to_json(worksheet, {
+  if (!worksheet) {
+    throw new Error(`Sheet "${sheetName}" not found in workbook.`);
+  }
+
+  const rawMatrix = XLSX.utils.sheet_to_json(worksheet, {
+    header: 1,
     defval: null,
     raw: false,
     dateNF: 'yyyy-mm-dd'
   });
 
-  const dataset = cleanAndProfileDataset(rawRows, `${file.name.replace(/\.[^/.]+$/, '')} (${sheetName})`);
+  const audit = {
+    sanitizedErrorsCount: 0,
+    cleanedNegativesCount: 0,
+    skippedBannerRows: 0,
+    excludedSummaryRowsCount: 0
+  };
+
+  const { headers, dataRows, detectedTitle } = detectTrueHeaderAndData(rawMatrix, worksheet, audit);
+
+  const cleanTitle = detectedTitle
+    ? `${detectedTitle} (${sheetName})`
+    : `${fileName.replace(/\.[^/.]+$/, '')} (${sheetName})`;
+
+  const dataset = cleanAndProfileDataset(dataRows, cleanTitle, audit);
   dataset.availableSheets = workbook.SheetNames;
   dataset.selectedSheet = sheetName;
+  dataset._workbook = workbook;
+  dataset._fileName = fileName;
+
+  dataset.allSheetsMeta = workbook.SheetNames.map((name, idx) => {
+    const ws = workbook.Sheets[name];
+    let rowEstimate = 0;
+    if (ws && ws['!ref']) {
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      rowEstimate = Math.max(0, range.e.r - range.s.r);
+    }
+    return { index: idx, name, estimatedRows: rowEstimate };
+  });
+
   return dataset;
+}
+
+/**
+ * Combines / unions multiple worksheets from a workbook into a single unified dataset,
+ * tagging each row with a `_SheetName` provenance column.
+ */
+export function combineWorkbookSheets(workbook, sheetNamesToCombine = [], fileName = 'Workbook') {
+  if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+    throw new Error('Invalid workbook provided.');
+  }
+
+  const sheetsToProcess = Array.isArray(sheetNamesToCombine) && sheetNamesToCombine.length > 0
+    ? sheetNamesToCombine
+    : workbook.SheetNames;
+
+  const combinedRows = [];
+  const audit = {
+    sanitizedErrorsCount: 0,
+    cleanedNegativesCount: 0,
+    skippedBannerRows: 0,
+    excludedSummaryRowsCount: 0
+  };
+
+  for (const sName of sheetsToProcess) {
+    const ws = workbook.Sheets[sName];
+    if (!ws) continue;
+
+    const rawMatrix = XLSX.utils.sheet_to_json(ws, {
+      header: 1,
+      defval: null,
+      raw: false,
+      dateNF: 'yyyy-mm-dd'
+    });
+
+    try {
+      const { dataRows } = detectTrueHeaderAndData(rawMatrix, ws, audit);
+      for (const row of dataRows) {
+        combinedRows.push({
+          _SheetName: sName,
+          ...row
+        });
+      }
+    } catch {
+      // Skip empty sheets gracefully
+    }
+  }
+
+  if (combinedRows.length === 0) {
+    throw new Error('No valid tabular rows found across the selected worksheets.');
+  }
+
+  const title = `${fileName.replace(/\.[^/.]+$/, '')} (Combined ${sheetsToProcess.length} Sheets)`;
+  const dataset = cleanAndProfileDataset(combinedRows, title, audit);
+  dataset.availableSheets = workbook.SheetNames;
+  dataset.selectedSheet = 'All Combined';
+  dataset._workbook = workbook;
+  dataset._fileName = fileName;
+
+  return dataset;
+}
+
+/**
+ * Parse Excel (.xlsx, .xls, .xlsm, .xlsb)
+ */
+export async function parseExcelFile(file, sheetIndexOrName = 0) {
+  const { workbook } = await inspectExcelWorkbook(file);
+  return parseWorkbookSheet(workbook, sheetIndexOrName, file.name);
 }
 
 /**
@@ -434,6 +707,8 @@ export async function parseUploadedFile(file) {
       return await parseCsvFile(file);
     case 'xlsx':
     case 'xls':
+    case 'xlsm':
+    case 'xlsb':
       return await parseExcelFile(file);
     case 'docx':
       return await parseDocxFile(file);

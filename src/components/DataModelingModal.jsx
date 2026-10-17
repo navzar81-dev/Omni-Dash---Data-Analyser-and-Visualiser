@@ -382,7 +382,7 @@ export function DataModelingModal({
                     <div style={{ marginBottom: '10px' }}>
                       <input
                         type="file"
-                        accept=".csv,.xlsx,.xls,.tsv"
+                        accept=".csv,.xlsx,.xls,.xlsm,.xlsb,.tsv"
                         onChange={handleFileUploadSecondary}
                         style={{ fontSize: '0.74rem', width: '100%' }}
                       />
