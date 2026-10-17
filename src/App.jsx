@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Navbar } from './components/Navbar';
 import { GlobalFilterBar } from './components/GlobalFilterBar';
 import { SmartQueryBar } from './components/SmartQueryBar';
@@ -201,7 +201,9 @@ export default function App() {
 
   const activeMeta = initialSession?.meta || SAMPLE_DATASETS.financials;
   const activeRaw = initialSession?.data || SAMPLE_DATASETS.financials.data;
-  const initialProfile = cleanAndProfileDataset(activeRaw, activeMeta.name);
+  const initialProfile = useMemo(() => {
+    return cleanAndProfileDataset(activeRaw, activeMeta.name);
+  }, [activeRaw, activeMeta.name]);
   const initialKey = getDatasetKey(activeMeta);
   const initialSavedWorkspace = useMemo(() => {
     return loadDatasetWorkspace(initialKey);
@@ -232,6 +234,7 @@ export default function App() {
   const [isAiAnalystOpen, setIsAiAnalystOpen] = useState(false);
   const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
   const [editingWidget, setEditingWidget] = useState(null);
+  const [pendingAiSlide, setPendingAiSlide] = useState(null);
 
   // Advanced Compound Filter Rules State
   const [compoundRules, setCompoundRules] = useState([]);
@@ -254,11 +257,14 @@ export default function App() {
   const [activeFilters, setActiveFilters] = useState(initialSavedWorkspace?.activeFilters || {});
   const [searchTerm, setSearchTerm] = useState(initialSavedWorkspace?.searchTerm || '');
   const [toast, setToast] = useState(null);
+  const toastTimeoutRef = useRef(null);
 
   const showToast = (message, type = 'success') => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     setToast({ text: message, type });
-    setTimeout(() => {
+    toastTimeoutRef.current = setTimeout(() => {
       setToast(null);
+      toastTimeoutRef.current = null;
     }, 3200);
   };
 
@@ -352,34 +358,55 @@ export default function App() {
     return result;
   }, [rawData, activeFilters, searchTerm, compoundRules, compoundLogicOperator]);
 
-  // Derived KPI metrics for presentation & executive cards
+  // Derived KPI metrics for presentation & executive cards based on active kpiCards
   const kpis = useMemo(() => {
-    const numericCols = columnProfiles.filter(c => c.type === 'measure').slice(0, 4);
-    return numericCols.map(col => {
-      const stats = calculateKpiDelta(filteredData, col.name, dateColumn);
+    const activeCards = kpiCards && kpiCards.length > 0
+      ? kpiCards
+      : columnProfiles
+          .filter(c => c.type === 'measure')
+          .slice(0, 4)
+          .map((col, idx) => ({
+            id: `kpi-def-${idx}`,
+            column: col.name,
+            label: col.name.replace(/_/g, ' '),
+            aggregation: 'SUM',
+            format: /(revenue|cost|cogs|opex|capex|price|spend|profit|mrr|arr|income|ebitda)/i.test(col.name) ? 'currency' : 'compact',
+            target: null
+          }));
+
+    return activeCards.slice(0, 4).map(card => {
+      const stats = calculateKpiDelta(filteredData, card.column, dateColumn, card.aggregation || 'SUM');
       return {
-        name: col.name,
+        name: card.column,
+        label: card.label || card.column.replace(/_/g, ' '),
         total: stats.total,
-        formattedTotal: formatMetric(stats.total, col.name),
+        formattedTotal: formatMetric(stats.total, card.column, card.format),
         deltaPct: stats.deltaPct,
         isPositive: stats.deltaPct >= 0
       };
     });
-  }, [filteredData, columnProfiles, dateColumn]);
+  }, [kpiCards, filteredData, columnProfiles, dateColumn]);
 
-  // Persistent Sync: Automatically save workspace customization for the current dataset
+  // Persistent Sync: Save active dataset session only when dataset metadata or raw data changes
+  useEffect(() => {
+    saveActiveDatasetSession(datasetMeta, rawData);
+  }, [datasetMeta, rawData]);
+
+  // Persistent Sync: Debounce workspace customization saving (widgets, filters, search)
   useEffect(() => {
     const key = getDatasetKey(datasetMeta);
     if (!key) return;
-    saveDatasetWorkspace(key, {
-      kpiCards,
-      widgets,
-      activeFilters,
-      dateColumn,
-      searchTerm
-    });
-    saveActiveDatasetSession(datasetMeta, rawData);
-  }, [datasetMeta, kpiCards, widgets, activeFilters, dateColumn, searchTerm, rawData]);
+    const timeout = setTimeout(() => {
+      saveDatasetWorkspace(key, {
+        kpiCards,
+        widgets,
+        activeFilters,
+        dateColumn,
+        searchTerm
+      });
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [datasetMeta, kpiCards, widgets, activeFilters, dateColumn, searchTerm]);
 
   const handleSelectSample = (sample) => {
     const profiled = cleanAndProfileDataset(sample.data, sample.name);
@@ -390,6 +417,7 @@ export default function App() {
     setRawData(sample.data);
     setColumns(profiled.columns);
     setColumnProfiles(profiled.columnProfiles);
+    setCompoundRules([]);
     saveActiveDatasetSession(sample, sample.data);
 
     if (savedConfig) {
@@ -421,6 +449,7 @@ export default function App() {
     setRawData(imported.data);
     setColumns(imported.columns);
     setColumnProfiles(imported.columnProfiles);
+    setCompoundRules([]);
     saveActiveDatasetSession(imported, imported.data);
 
     if (savedConfig) {
@@ -534,6 +563,7 @@ export default function App() {
       setColumns(profiled.columns);
       setColumnProfiles(profiled.columnProfiles);
       setDateColumn(profiled.dateColumn);
+      setCompoundRules([]);
       setKpiCards(buildDefaultKpis(profiled.columnProfiles));
       setWidgets(buildDefaultSmartWidgets(profiled.columnProfiles));
       saveActiveDatasetSession(newMeta, data);
@@ -584,8 +614,15 @@ export default function App() {
     exportToCsv(filteredData, datasetMeta?.name || 'Business_Report');
   };
 
-  const handleExportAllChartsZip = () => {
-    exportAllWidgetsAsZip(widgets, datasetMeta?.name || 'Dashboard');
+  const handleExportAllChartsZip = async () => {
+    if (activeTab !== 'dashboard') {
+      setActiveTab('dashboard');
+      await new Promise(r => setTimeout(r, 200));
+    }
+    const success = await exportAllWidgetsAsZip(widgets, datasetMeta?.name || 'Dashboard');
+    if (success) {
+      showToast('All chart images packaged and downloaded as ZIP', 'success');
+    }
   };
 
   const handleManualSaveView = () => {
@@ -867,6 +904,8 @@ export default function App() {
         widgets={widgets}
         insights={insights}
         kpis={kpis}
+        pendingAiSlide={pendingAiSlide}
+        onClearPendingAiSlide={() => setPendingAiSlide(null)}
       />
 
       {/* Multi-Format File Ingestion Modal */}
@@ -944,7 +983,8 @@ export default function App() {
         insights={insights}
         filteredData={filteredData}
         onOpenModelSettings={() => setIsAiSettingsOpen(true)}
-        onAddSlideWithAiAnalysis={() => {
+        onAddSlideWithAiAnalysis={(aiAnalysisText) => {
+          setPendingAiSlide(aiAnalysisText);
           setIsPresentationOpen(true);
         }}
       />
@@ -1030,10 +1070,10 @@ export default function App() {
   );
 }
 
-function formatMetric(val, name = '') {
+function formatMetric(val, name = '', explicitFormat = null) {
   if (typeof val !== 'number') return String(val);
-  const isCurrency = /revenue|cost|cogs|income|ebitda|mrr|arr|spend|profit|price/i.test(name);
-  const isPercent = /pct|percent|rate|ratio|margin/i.test(name);
+  const isPercent = explicitFormat === 'percent' || /pct|percent|rate|margin/i.test(name);
+  const isCurrency = explicitFormat === 'currency' || (!explicitFormat && /revenue|cost|cogs|opex|capex|income|ebitda|mrr|arr|spend|profit|price/i.test(name));
 
   if (isPercent) return `${val.toFixed(1)}%`;
 

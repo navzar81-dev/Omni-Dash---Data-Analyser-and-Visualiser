@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Eye, FileSpreadsheet } from 'lucide-react';
 import { exportToExcel, exportToCsv } from '../services/exportService';
 
@@ -9,33 +9,39 @@ export function DataTableView({ data, columns, columnProfiles, datasetName }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // Search filter
-  const filtered = data.filter(row => {
-    if (!searchTerm) return true;
-    return Object.values(row).some(v => 
-      v !== null && v !== undefined && String(v).toLowerCase().includes(searchTerm.toLowerCase())
+  // Search filter memoized
+  const filtered = useMemo(() => {
+    if (!searchTerm.trim()) return data;
+    const term = searchTerm.toLowerCase();
+    return data.filter(row => 
+      Object.values(row).some(v => 
+        v !== null && v !== undefined && String(v).toLowerCase().includes(term)
+      )
     );
-  });
+  }, [data, searchTerm]);
 
-  // Sorting
-  const sorted = [...filtered].sort((a, b) => {
-    if (!sortCol) return 0;
-    const aVal = a[sortCol];
-    const bVal = b[sortCol];
-    if (aVal === bVal) return 0;
-    if (aVal === null || aVal === undefined) return 1;
-    if (bVal === null || bVal === undefined) return -1;
+  // Sorting memoized
+  const sorted = useMemo(() => {
+    if (!sortCol) return filtered;
+    return [...filtered].sort((a, b) => {
+      const aVal = a[sortCol];
+      const bVal = b[sortCol];
+      if (aVal === bVal) return 0;
+      if (aVal === null || aVal === undefined) return 1;
+      if (bVal === null || bVal === undefined) return -1;
 
-    if (typeof aVal === 'number' && typeof bVal === 'number') {
-      return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
-    }
-    return sortDir === 'asc'
-      ? String(aVal).localeCompare(String(bVal))
-      : String(bVal).localeCompare(String(aVal));
-  });
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      return sortDir === 'asc'
+        ? String(aVal).localeCompare(String(bVal))
+        : String(bVal).localeCompare(String(aVal));
+    });
+  }, [filtered, sortCol, sortDir]);
 
-  const totalPages = Math.ceil(sorted.length / pageSize) || 1;
-  const currentRows = sorted.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const activePage = Math.min(page, totalPages);
+  const currentRows = sorted.slice((activePage - 1) * pageSize, activePage * pageSize);
 
   const handleSort = (col) => {
     if (sortCol === col) {
@@ -182,7 +188,7 @@ function formatTableCell(val, colName = '') {
   if (typeof val !== 'number') return String(val);
 
   const isPercent = /pct|percent|rate|margin/i.test(colName);
-  const isCurrency = /revenue|cost|cogs|income|ebitda|mrr|arr|spend|profit|price/i.test(colName);
+  const isCurrency = /revenue|cost|cogs|opex|capex|income|ebitda|mrr|arr|spend|profit|price/i.test(colName);
 
   if (isPercent) return `${val.toFixed(1)}%`;
   if (isCurrency) return `$${val.toLocaleString()}`;

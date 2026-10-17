@@ -123,7 +123,9 @@ export function PresentationStudio({
   columnProfiles,
   widgets = [],
   insights = [],
-  kpis = []
+  kpis = [],
+  pendingAiSlide = null,
+  onClearPendingAiSlide = () => {}
 }) {
   const [slides, setSlides] = useState(() => createInitialDeck(datasetMeta, widgets, insights, kpis));
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
@@ -134,11 +136,44 @@ export function PresentationStudio({
   const [isBrandModalOpen, setIsBrandModalOpen] = useState(false);
 
   // Sync slides if deck is empty or dataset switched
+  const lastDatasetKeyRef = useRef(datasetMeta?.id || datasetMeta?.name);
   useEffect(() => {
-    if (isOpen && slides.length === 0) {
-      setSlides(createInitialDeck(datasetMeta, widgets, insights, kpis));
+    const currentKey = datasetMeta?.id || datasetMeta?.name;
+    if (isOpen) {
+      if (slides.length === 0 || lastDatasetKeyRef.current !== currentKey) {
+        setSlides(createInitialDeck(datasetMeta, widgets, insights, kpis));
+        setActiveSlideIndex(0);
+        lastDatasetKeyRef.current = currentKey;
+      }
     }
-  }, [isOpen, datasetMeta?.id]);
+  }, [isOpen, datasetMeta?.id, datasetMeta?.name]);
+
+  // Ingest pending AI analyst slide
+  useEffect(() => {
+    if (pendingAiSlide) {
+      const rawBullets = String(pendingAiSlide)
+        .split('\n')
+        .map(l => l.replace(/^[•*\-\d.]+\s*/, '').trim())
+        .filter(l => l.length > 10)
+        .slice(0, 4);
+
+      const newSlide = {
+        id: `slide-ai-${Date.now()}`,
+        layout: 'conclusions',
+        title: 'Local AI Strategic Findings',
+        subtitle: 'Automated on-device executive intelligence synthesis',
+        bullets: rawBullets.length > 0 ? rawBullets : [String(pendingAiSlide).slice(0, 200)],
+        speakerNotes: String(pendingAiSlide)
+      };
+
+      setSlides(prev => {
+        const next = [...prev, newSlide];
+        setActiveSlideIndex(next.length - 1);
+        return next;
+      });
+      onClearPendingAiSlide();
+    }
+  }, [pendingAiSlide]);
 
   // Keyboard navigation for Presenter Mode
   useEffect(() => {
@@ -312,26 +347,30 @@ export function PresentationStudio({
     updateCurrentSlide('bullets', currentBullets);
   };
 
-  // Export to PowerPoint PPTX
+  // Export to PowerPoint PPTX with clean presentation chart captures
   const handleExportPptx = async () => {
     setIsExporting(true);
     try {
-      // Capture all widget images that are referenced by slides
+      // Capture all widget images from clean presentation capture elements
       const capturedImagesMap = {};
       for (const s of slides) {
         if (s.widgetId) {
-          const domId = `widget-card-${s.widgetId}`;
-          const imgDataUrl = await captureElementAsDataUrl(domId);
+          const domId = `presentation-capture-widget-${s.widgetId}`;
+          let imgDataUrl = await captureElementAsDataUrl(domId);
+          if (!imgDataUrl) {
+            imgDataUrl = await captureElementAsDataUrl(`slide-active-widget-${s.widgetId}`) || await captureElementAsDataUrl(`widget-card-${s.widgetId}`);
+          }
           if (imgDataUrl) {
             capturedImagesMap[s.widgetId] = imgDataUrl;
           }
         }
       }
 
+      const isDarkCanvas = isColorDark(brandTemplate?.colors?.background || '#0a0e17');
       await exportPresentationToPptx(slides, capturedImagesMap, {
         title: datasetMeta?.name || 'Executive Presentation',
         company: brandTemplate?.name || 'Executive Board',
-        theme: 'dark'
+        theme: isDarkCanvas ? 'dark' : 'light'
       }, brandTemplate);
     } catch (err) {
       console.error('Failed to export PPTX:', err);
@@ -340,15 +379,26 @@ export function PresentationStudio({
     }
   };
 
-  // Export to PDF Slides
+  // Export to PDF Slides (exports full presentation deck across all slides)
   const handleExportPdfSlides = async () => {
     setIsExporting(true);
+    const originalIndex = activeSlideIndex;
     try {
-      // Export current active view as PDF
-      await exportPresentationToPdf(['slide-canvas-preview'], datasetMeta?.name || 'Presentation_Deck');
+      const slideElements = [];
+      for (let i = 0; i < slides.length; i++) {
+        setActiveSlideIndex(i);
+        // Wait for React re-render and Chart.js animation update
+        await new Promise(r => setTimeout(r, 120));
+        const el = document.getElementById('slide-canvas-preview');
+        if (el) {
+          slideElements.push(el);
+        }
+      }
+      await exportPresentationToPdf(slideElements, datasetMeta?.name || 'Presentation_Deck');
     } catch (err) {
       console.error('Failed to export PDF:', err);
     } finally {
+      setActiveSlideIndex(originalIndex);
       setIsExporting(false);
     }
   };
@@ -357,7 +407,15 @@ export function PresentationStudio({
   const activeWidget = currentSlide?.widgetId ? (widgets.find(w => w.id === currentSlide.widgetId) || widgets[0]) : widgets[0];
 
   return (
-    <div className="modal-overlay presentation-studio-overlay" style={{ padding: isPresenting ? 0 : '16px' }} onClick={onClose}>
+    <div
+      className="modal-overlay presentation-studio-overlay"
+      style={{ padding: isPresenting ? 0 : '16px' }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div
         className="glass-panel presentation-studio-panel"
         style={{
@@ -371,6 +429,7 @@ export function PresentationStudio({
           position: 'relative'
         }}
         onClick={e => e.stopPropagation()}
+        onMouseDown={e => e.stopPropagation()}
       >
         {/* Studio Top Control Header (Hidden when presenting) */}
         {!isPresenting && (
@@ -476,15 +535,30 @@ export function PresentationStudio({
             }}>
               <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
-                  Deck Slides
+                  Deck Slides ({slides.length})
                 </span>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => handleAddSlide('split-visual-insights')}
-                  style={{ padding: '3px 8px', fontSize: '0.7rem', gap: '4px' }}
-                >
-                  <Plus size={12} /> Add Slide
-                </button>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    title="Regenerate presentation from live dashboard metrics and widgets"
+                    onClick={() => {
+                      if (window.confirm('Re-sync entire presentation deck with current dashboard KPIs and charts?')) {
+                        setSlides(createInitialDeck(datasetMeta, widgets, insights, kpis));
+                        setActiveSlideIndex(0);
+                      }
+                    }}
+                    style={{ padding: '3px 8px', fontSize: '0.7rem' }}
+                  >
+                    Sync Live
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleAddSlide('split-visual-insights')}
+                    style={{ padding: '3px 8px', fontSize: '0.7rem', gap: '4px' }}
+                  >
+                    <Plus size={12} /> Add
+                  </button>
+                </div>
               </div>
 
               {/* Thumbnail List */}
@@ -692,21 +766,38 @@ export function PresentationStudio({
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                   {/* Header */}
                   <div style={{ marginBottom: '20px' }}>
-                    <h2 style={{ fontSize: isPresenting ? '2rem' : '1.5rem', fontWeight: 800 }}>{currentSlide.title}</h2>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{currentSlide.subtitle}</p>
+                    <h2 style={{ fontSize: isPresenting ? '2rem' : '1.5rem', fontWeight: 800, fontFamily: headingFont, color: canvasTextMain }}>{currentSlide.title}</h2>
+                    <p style={{ fontSize: '0.85rem', color: canvasTextMuted, fontFamily: bodyFont }}>{currentSlide.subtitle}</p>
                   </div>
 
                   {/* 4 Big KPI Cards */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '24px' }}>
                     {(currentSlide.kpis || []).map((kpi, kIdx) => (
-                      <div key={kIdx} className="glass-panel" style={{ padding: '16px', background: 'rgba(255, 255, 255, 0.03)' }}>
-                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                      <div
+                        key={kIdx}
+                        className="glass-panel"
+                        style={{
+                          padding: '16px',
+                          background: canvasSurface,
+                          border: `1px solid ${isDarkCanvas ? 'var(--border-subtle)' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: canvasTextMuted, textTransform: 'uppercase' }}>
                           {kpi.label}
                         </div>
-                        <div style={{ fontSize: '1.6rem', fontWeight: 800, fontFamily: 'var(--font-mono)', margin: '6px 0' }}>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 800, fontFamily: 'var(--font-mono)', margin: '6px 0', color: canvasTextMain }}>
                           {kpi.value}
                         </div>
-                        <span className="badge badge-emerald" style={{ fontSize: '0.7rem' }}>
+                        <span
+                          style={{
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            background: `${brandPrimary}22`,
+                            color: brandPrimary
+                          }}
+                        >
                           {kpi.delta}
                         </span>
                       </div>
@@ -717,8 +808,8 @@ export function PresentationStudio({
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {(currentSlide.bullets || []).map((b, bIdx) => (
                       <div key={bIdx} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                        <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#6366f1', marginTop: '7px' }} />
-                        <span style={{ fontSize: isPresenting ? '1.05rem' : '0.88rem', color: 'var(--text-main)', lineHeight: 1.5 }}>
+                        <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: brandAccent, marginTop: '7px' }} />
+                        <span style={{ fontSize: isPresenting ? '1.05rem' : '0.88rem', color: canvasTextMain, lineHeight: 1.5, fontFamily: bodyFont }}>
                           {b}
                         </span>
                       </div>
@@ -732,8 +823,8 @@ export function PresentationStudio({
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                   {/* Header */}
                   <div style={{ marginBottom: '16px' }}>
-                    <h2 style={{ fontSize: isPresenting ? '1.9rem' : '1.45rem', fontWeight: 800 }}>{currentSlide.title}</h2>
-                    <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{currentSlide.subtitle}</p>
+                    <h2 style={{ fontSize: isPresenting ? '1.9rem' : '1.45rem', fontWeight: 800, fontFamily: headingFont, color: canvasTextMain }}>{currentSlide.title}</h2>
+                    <p style={{ fontSize: '0.82rem', color: canvasTextMuted, fontFamily: bodyFont }}>{currentSlide.subtitle}</p>
                   </div>
 
                   {/* Content Split: 60% Chart / 40% Narrative */}
@@ -744,21 +835,41 @@ export function PresentationStudio({
                         <WidgetCard
                           widget={{ ...activeWidget, width: 'full' }}
                           data={data}
+                          theme={isDarkCanvas ? 'dark' : 'light'}
+                          customPalette={{
+                            primary: brandPrimary,
+                            border: brandAccent,
+                            gradient: (brandColors.accentPalette && brandColors.accentPalette.length >= 6)
+                              ? brandColors.accentPalette
+                              : [brandPrimary, brandAccent, '#10b981', '#f59e0b', '#8b5cf6', '#ec4899']
+                          }}
+                          hideControls={true}
+                          idOverride={`slide-active-widget-${activeWidget.id}`}
                           onEdit={() => {}}
                           onDuplicate={() => {}}
                           onDelete={() => {}}
                           onResize={() => {}}
                         />
                       ) : (
-                        <div style={{ color: 'var(--text-faint)', textAlign: 'center', padding: '40px' }}>
+                        <div style={{ color: canvasTextMuted, textAlign: 'center', padding: '40px' }}>
                           Select a widget to embed in this slide.
                         </div>
                       )}
                     </div>
 
                     {/* Executive Takeaways & Insights Bullets */}
-                    <div className="glass-panel" style={{ height: '100%', padding: '20px', background: 'rgba(255, 255, 255, 0.02)', display: 'flex', flexDirection: 'column' }}>
-                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div
+                      className="glass-panel"
+                      style={{
+                        height: '100%',
+                        padding: '20px',
+                        background: canvasSurface,
+                        border: `1px solid ${isDarkCanvas ? 'var(--border-subtle)' : '#e2e8f0'}`,
+                        display: 'flex',
+                        flexDirection: 'column'
+                      }}
+                    >
+                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: brandAccent, textTransform: 'uppercase', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <Sparkles size={14} color="#fbbf24" />
                         <span>Executive Takeaways & Findings</span>
                       </div>
@@ -766,8 +877,8 @@ export function PresentationStudio({
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         {(currentSlide.bullets || []).map((b, bIdx) => (
                           <div key={bIdx} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#34d399', marginTop: '6px' }} />
-                            <p style={{ fontSize: isPresenting ? '1rem' : '0.85rem', color: 'var(--text-main)', lineHeight: 1.5 }}>
+                            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: brandPrimary, marginTop: '6px' }} />
+                            <p style={{ fontSize: isPresenting ? '1rem' : '0.85rem', color: canvasTextMain, lineHeight: 1.5, fontFamily: bodyFont }}>
                               {b}
                             </p>
                           </div>
@@ -782,14 +893,24 @@ export function PresentationStudio({
               {currentSlide.layout === 'full-chart' && (
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                   <div style={{ marginBottom: '14px' }}>
-                    <h2 style={{ fontSize: isPresenting ? '1.9rem' : '1.45rem', fontWeight: 800 }}>{currentSlide.title}</h2>
-                    <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{currentSlide.subtitle}</p>
+                    <h2 style={{ fontSize: isPresenting ? '1.9rem' : '1.45rem', fontWeight: 800, fontFamily: headingFont, color: canvasTextMain }}>{currentSlide.title}</h2>
+                    <p style={{ fontSize: '0.82rem', color: canvasTextMuted, fontFamily: bodyFont }}>{currentSlide.subtitle}</p>
                   </div>
                   <div style={{ flex: 1, minHeight: '300px' }}>
                     {activeWidget && (
                       <WidgetCard
                         widget={{ ...activeWidget, width: 'full' }}
                         data={data}
+                        theme={isDarkCanvas ? 'dark' : 'light'}
+                        customPalette={{
+                          primary: brandPrimary,
+                          border: brandAccent,
+                          gradient: (brandColors.accentPalette && brandColors.accentPalette.length >= 6)
+                            ? brandColors.accentPalette
+                            : [brandPrimary, brandAccent, '#10b981', '#f59e0b', '#8b5cf6', '#ec4899']
+                        }}
+                        hideControls={true}
+                        idOverride={`slide-active-widget-${activeWidget.id}`}
                         onEdit={() => {}}
                         onDuplicate={() => {}}
                         onDelete={() => {}}
@@ -804,31 +925,53 @@ export function PresentationStudio({
               {currentSlide.layout === 'conclusions' && (
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 20px' }}>
                   <div style={{ marginBottom: '24px' }}>
-                    <span className="badge badge-emerald" style={{ fontSize: '0.75rem', marginBottom: '8px' }}>
+                    <span
+                      style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        padding: '3px 10px',
+                        borderRadius: '12px',
+                        background: brandPrimary,
+                        color: '#ffffff',
+                        display: 'inline-block',
+                        marginBottom: '8px'
+                      }}
+                    >
                       Executive Directives
                     </span>
-                    <h2 style={{ fontSize: isPresenting ? '2.4rem' : '1.8rem', fontWeight: 800 }}>{currentSlide.title}</h2>
-                    <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>{currentSlide.subtitle}</p>
+                    <h2 style={{ fontSize: isPresenting ? '2.4rem' : '1.8rem', fontWeight: 800, fontFamily: headingFont, color: canvasTextMain }}>{currentSlide.title}</h2>
+                    <p style={{ fontSize: '0.9rem', color: canvasTextMuted, fontFamily: bodyFont }}>{currentSlide.subtitle}</p>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     {(currentSlide.bullets || []).map((b, bIdx) => (
-                      <div key={bIdx} className="glass-panel" style={{ padding: '14px 18px', background: 'rgba(255, 255, 255, 0.03)', display: 'flex', alignItems: 'center', gap: '14px' }}>
+                      <div
+                        key={bIdx}
+                        className="glass-panel"
+                        style={{
+                          padding: '14px 18px',
+                          background: canvasSurface,
+                          border: `1px solid ${isDarkCanvas ? 'var(--border-subtle)' : '#e2e8f0'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '14px'
+                        }}
+                      >
                         <div style={{
                           width: '26px',
                           height: '26px',
                           borderRadius: '50%',
-                          background: 'rgba(99, 102, 241, 0.2)',
+                          background: `${brandPrimary}22`,
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          color: '#818cf8',
+                          color: brandPrimary,
                           fontWeight: 800,
                           fontSize: '0.8rem'
                         }}>
                           {bIdx + 1}
                         </div>
-                        <span style={{ fontSize: isPresenting ? '1.15rem' : '0.92rem', fontWeight: 500, color: 'var(--text-main)' }}>
+                        <span style={{ fontSize: isPresenting ? '1.15rem' : '0.92rem', fontWeight: 500, color: canvasTextMain, fontFamily: bodyFont }}>
                           {b}
                         </span>
                       </div>
@@ -954,7 +1097,12 @@ export function PresentationStudio({
                 <select
                   className="form-select"
                   value={currentSlide.layout}
-                  onChange={e => updateCurrentSlide('layout', e.target.value)}
+                  onClick={e => e.stopPropagation()}
+                  onMouseDown={e => e.stopPropagation()}
+                  onChange={e => {
+                    e.stopPropagation();
+                    updateCurrentSlide('layout', e.target.value);
+                  }}
                 >
                   {SLIDE_LAYOUTS.map(l => (
                     <option key={l.id} value={l.id}>{l.label}</option>
@@ -996,7 +1144,12 @@ export function PresentationStudio({
                   <select
                     className="form-select"
                     value={currentSlide.widgetId || ''}
-                    onChange={e => updateCurrentSlide('widgetId', e.target.value)}
+                    onClick={e => e.stopPropagation()}
+                    onMouseDown={e => e.stopPropagation()}
+                    onChange={e => {
+                      e.stopPropagation();
+                      updateCurrentSlide('widgetId', e.target.value);
+                    }}
                   >
                     {widgets.map(w => (
                       <option key={w.id} value={w.id}>
@@ -1060,6 +1213,63 @@ export function PresentationStudio({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Off-screen Capture Container for Pristine Slide Image Generation */}
+      <div
+        id="presentation-studio-offscreen-capture"
+        style={{
+          position: 'fixed',
+          left: '-99999px',
+          top: 0,
+          width: '1200px',
+          pointerEvents: 'none',
+          opacity: 0,
+          zIndex: -1
+        }}
+      >
+        {Array.from(new Set(slides.map(s => s.widgetId).filter(Boolean))).map(wId => {
+          const w = (widgets || []).find(item => item.id === wId);
+          if (!w) return null;
+          const brandColors = brandTemplate?.colors || {};
+          const isDarkCanvas = isColorDark(brandColors.background || '#0a0e17');
+          const canvasBg = brandColors.background || '#0a0e17';
+          const brandPrimary = brandColors.primary || '#2563eb';
+          const brandAccent = brandColors.accent || '#38bdf8';
+          return (
+            <div
+              key={w.id}
+              id={`presentation-capture-widget-${w.id}`}
+              style={{
+                width: '1000px',
+                height: '560px',
+                background: canvasBg,
+                padding: '20px',
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+            >
+              <WidgetCard
+                widget={{ ...w, width: 'full' }}
+                data={data}
+                theme={isDarkCanvas ? 'dark' : 'light'}
+                customPalette={{
+                  primary: brandPrimary,
+                  border: brandAccent,
+                  gradient: (brandColors.accentPalette && brandColors.accentPalette.length >= 6)
+                    ? brandColors.accentPalette
+                    : [brandPrimary, brandAccent, '#10b981', '#f59e0b', '#8b5cf6', '#ec4899']
+                }}
+                hideControls={true}
+                idOverride={`presentation-capture-widget-${w.id}-card`}
+                onEdit={() => {}}
+                onDuplicate={() => {}}
+                onDelete={() => {}}
+                onResize={() => {}}
+              />
+            </div>
+          );
+        })}
       </div>
 
       {/* Corporate Brand Master Template Studio Modal */}

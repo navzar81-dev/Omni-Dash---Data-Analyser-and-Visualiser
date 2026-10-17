@@ -65,8 +65,8 @@ export function evaluateCustomFormula(dataset, formulaName, formulaExpression) {
         .replace(/MIN\s*\(/gi, 'Math.min(')
         .replace(/MAX\s*\(/gi, 'Math.max(');
 
-      // Validate allowed characters to prevent unsafe code injection
-      if (!/^[0-9+\-*/().?:><=!\sMath.log10sqrtabsroundminmaxeE]+$/.test(expr)) {
+      // Validate allowed characters to prevent unsafe code injection (includes comma for multi-argument functions)
+      if (!/^[0-9+\-*/().?:><=!\s,Math.log10sqrtabsroundminmaxeE]+$/.test(expr)) {
         return { ...row, [formulaName]: null };
       }
 
@@ -302,6 +302,12 @@ export function aggregateData({
       entries.sort((a, b) => a.value - b.value);
     } else if (sortBy === 'desc') {
       entries.sort((a, b) => b.value - a.value);
+    } else {
+      // Natural chronological sorting if labels are recognizable dates
+      const allDates = entries.length > 1 && entries.every(e => !isNaN(Date.parse(e.label)) && isNaN(Number(e.label)));
+      if (allDates) {
+        entries.sort((a, b) => Date.parse(a.label) - Date.parse(b.label));
+      }
     }
 
     const labels = entries.map(e => e.label);
@@ -339,6 +345,10 @@ export function aggregateData({
   });
 
   const labels = Array.from(dimSet);
+  const allDates = labels.length > 1 && labels.every(l => !isNaN(Date.parse(l)) && isNaN(Number(l)));
+  if (allDates) {
+    labels.sort((a, b) => Date.parse(a) - Date.parse(b));
+  }
   const groupNames = Array.from(groupSet);
 
   const datasets = groupNames.map(grp => {
@@ -350,6 +360,11 @@ export function aggregateData({
       if (aggregation === 'AVG') return bucket.reduce((a, b) => a + b, 0) / bucket.length;
       if (aggregation === 'MIN') return safeMin(bucket, 0);
       if (aggregation === 'MAX') return safeMax(bucket, 0);
+      if (aggregation === 'MEDIAN') {
+        const sorted = [...bucket].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+      }
       return bucket.length;
     });
 
@@ -394,38 +409,57 @@ export function computePivotMatrix(rows, rowDim, colDim, valMeasure, agg = 'SUM'
 
   const matrix = [];
   const rowTotals = [];
-  const colTotals = new Array(colHeaders.length).fill(0);
-  let grandTotal = 0;
+  const colTotals = colHeaders.map(cHead => {
+    let colSum = 0;
+    let colCount = 0;
+    rowHeaders.forEach(rHead => {
+      const vals = cellMap.get(`${rHead}:::${cHead}`) || [];
+      if (vals.length > 0) {
+        colSum += vals.reduce((a, b) => a + b, 0);
+        colCount += vals.length;
+      }
+    });
+    if (colCount === 0) return 0;
+    return Math.round((agg === 'AVG' ? colSum / colCount : colSum) * 100) / 100;
+  });
 
-  rowHeaders.forEach((rHead, rIdx) => {
+  let grandSum = 0;
+  let grandCount = 0;
+
+  rowHeaders.forEach((rHead) => {
     const rowCells = [];
     let rSum = 0;
+    let rCount = 0;
 
-    colHeaders.forEach((cHead, cIdx) => {
+    colHeaders.forEach((cHead) => {
       const key = `${rHead}:::${cHead}`;
       const vals = cellMap.get(key) || [];
       let val = 0;
       if (vals.length > 0) {
         val = agg === 'SUM' ? vals.reduce((a, b) => a + b, 0) : vals.reduce((a, b) => a + b, 0) / vals.length;
+        rSum += vals.reduce((a, b) => a + b, 0);
+        rCount += vals.length;
+        grandSum += vals.reduce((a, b) => a + b, 0);
+        grandCount += vals.length;
       }
       val = Math.round(val * 100) / 100;
       rowCells.push(val);
-      rSum += val;
-      colTotals[cIdx] += val;
-      grandTotal += val;
     });
 
     matrix.push(rowCells);
-    rowTotals.push(Math.round(rSum * 100) / 100);
+    const rTot = rCount === 0 ? 0 : (agg === 'AVG' ? rSum / rCount : rSum);
+    rowTotals.push(Math.round(rTot * 100) / 100);
   });
+
+  const grandTotal = grandCount === 0 ? 0 : Math.round((agg === 'AVG' ? grandSum / grandCount : grandSum) * 100) / 100;
 
   return {
     rowHeaders,
     colHeaders,
     matrix,
     rowTotals,
-    colTotals: colTotals.map(t => Math.round(t * 100) / 100),
-    grandTotal: Math.round(grandTotal * 100) / 100
+    colTotals,
+    grandTotal
   };
 }
 
@@ -437,10 +471,15 @@ export function calculateKpiDelta(rows, measureCol, dateCol, aggregation = 'SUM'
     return { current: 0, prior: 0, delta: 0, deltaPct: 0, trend: [], total: 0 };
   }
 
-  // If dateCol available, sort by dateCol
+  // If dateCol available, sort by dateCol properly using timestamp parsing
   let sorted = [...rows];
   if (dateCol) {
-    sorted.sort((a, b) => String(a[dateCol]).localeCompare(String(b[dateCol])));
+    sorted.sort((a, b) => {
+      const tA = Date.parse(a[dateCol]);
+      const tB = Date.parse(b[dateCol]);
+      if (!isNaN(tA) && !isNaN(tB)) return tA - tB;
+      return String(a[dateCol]).localeCompare(String(b[dateCol]));
+    });
   }
 
   const values = sorted.map(r => Number(r[measureCol]) || 0);
@@ -461,11 +500,16 @@ export function calculateKpiDelta(rows, measureCol, dateCol, aggregation = 'SUM'
   const priorHalf = values.slice(0, half);
   const recentHalf = values.slice(half);
 
-  const priorVal = computeAgg(priorHalf) || 1;
+  const priorVal = computeAgg(priorHalf);
   const recentVal = computeAgg(recentHalf);
 
   const delta = recentVal - priorVal;
-  const deltaPct = Math.round(((recentVal - priorVal) / Math.abs(priorVal)) * 1000) / 10;
+  let deltaPct = 0;
+  if (priorVal !== 0) {
+    deltaPct = Math.round(((recentVal - priorVal) / Math.abs(priorVal)) * 1000) / 10;
+  } else if (recentVal !== 0) {
+    deltaPct = recentVal > 0 ? 100 : -100;
+  }
 
   return {
     total: Math.round(total * 100) / 100,

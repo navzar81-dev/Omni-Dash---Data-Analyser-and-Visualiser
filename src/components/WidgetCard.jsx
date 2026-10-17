@@ -57,6 +57,7 @@ export function WidgetCard({
   widget,
   data,
   theme,
+  customPalette,
   onEdit,
   onDuplicate,
   onDelete,
@@ -69,7 +70,9 @@ export function WidgetCard({
   onDrop,
   onDragEnd,
   isDragging = false,
-  isDropTarget = false
+  isDropTarget = false,
+  hideControls = false,
+  idOverride = null
 }) {
   const [showMenu, setShowMenu] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -88,8 +91,8 @@ export function WidgetCard({
     targetValue = 100
   } = widget;
 
-  const currentPalette = PALETTES[colorTheme] || PALETTES.indigo;
-  const domId = `widget-card-${id}`;
+  const currentPalette = customPalette || PALETTES[colorTheme] || PALETTES.indigo;
+  const domId = idOverride || `widget-card-${id}`;
 
   const aggregated = aggregateData({
     rows: data,
@@ -299,20 +302,22 @@ export function WidgetCard({
       }}
     >
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: hideControls ? '8px' : '14px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-          {/* Drag Handle */}
-          <div
-            className="widget-drag-handle"
-            title="Drag to reorder widget on the dashboard"
-            style={{ marginTop: '2px' }}
-          >
-            <GripVertical size={16} />
-          </div>
+          {/* Drag Handle (hidden in slide embeds / presentation capture) */}
+          {!hideControls && (
+            <div
+              className="widget-drag-handle"
+              title="Drag to reorder widget on the dashboard"
+              style={{ marginTop: '2px' }}
+            >
+              <GripVertical size={16} />
+            </div>
+          )}
 
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <h3 style={{ fontSize: '0.98rem', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-main)' }}>
+              <h3 style={{ fontSize: hideControls ? '1.05rem' : '0.98rem', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-main)' }}>
                 {title}
               </h3>
               {modifier !== 'RAW' && (
@@ -327,46 +332,47 @@ export function WidgetCard({
           </div>
         </div>
 
-        {/* Action Buttons: Quick Download Image & More Options */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          {/* Direct Download Image Button */}
-          <button
-            onClick={handleDownloadImage}
-            title="Download Chart as PNG Image"
-            disabled={isExporting}
-            style={{
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-muted)',
-              cursor: 'pointer',
-              padding: '6px',
-              borderRadius: '7px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'all 0.15s'
-            }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#34d399'; e.currentTarget.style.borderColor = '#10b981'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-subtle)'; }}
-          >
-            <Camera size={14} />
-          </button>
-
-          {/* More Options Dropdown */}
-          <div style={{ position: 'relative' }}>
+        {/* Action Buttons: Quick Download Image & More Options (hidden in slide embeds / presentation capture) */}
+        {!hideControls && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {/* Direct Download Image Button */}
             <button
-              onClick={() => setShowMenu(!showMenu)}
+              onClick={handleDownloadImage}
+              title="Download Chart as PNG Image"
+              disabled={isExporting}
               style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--text-faint)',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid var(--border-subtle)',
+                color: 'var(--text-muted)',
                 cursor: 'pointer',
-                padding: '4px',
-                borderRadius: '6px'
+                padding: '6px',
+                borderRadius: '7px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s'
               }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#34d399'; e.currentTarget.style.borderColor = '#10b981'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-subtle)'; }}
             >
-              <MoreVertical size={16} />
+              <Camera size={14} />
             </button>
+
+            {/* More Options Dropdown */}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowMenu(!showMenu)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-faint)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  borderRadius: '6px'
+                }}
+              >
+                <MoreVertical size={16} />
+              </button>
 
             {showMenu && (
               <div
@@ -450,7 +456,8 @@ export function WidgetCard({
             )}
           </div>
         </div>
-      </div>
+      )}
+    </div>
 
       {/* Main Chart Body */}
       <div className="widget-card-chart-container" style={{ flex: 1, minHeight: '230px', position: 'relative' }}>

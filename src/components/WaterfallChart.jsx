@@ -8,28 +8,47 @@ export function WaterfallChart({ labels = [], values = [], title = 'Waterfall Br
     return <div style={{ color: 'var(--text-faint)', textAlign: 'center', padding: '20px' }}>Insufficient data for Waterfall walk.</div>;
   }
 
-  // Calculate cumulative steps
+  // Calculate cumulative steps accurately
+  // If the last label explicitly indicates a summary/total, treat it as the final total bar.
+  // Otherwise, all items are delta steps, and we append an ending "Net Total" pillar.
+  const lastLabelLower = String(labels[labels.length - 1] || '').trim().toLowerCase();
+  const lastIsExplicitTotal = lastLabelLower === 'total' || lastLabelLower === 'net total' || lastLabelLower === 'ending balance';
+
   let currentRunning = 0;
-  const steps = labels.map((lbl, idx) => {
+  const steps = [];
+
+  labels.forEach((lbl, idx) => {
     const rawVal = values[idx] || 0;
-    const isTotal = idx === labels.length - 1; // Last element treated as final subtotal
+    const isTotal = lastIsExplicitTotal && idx === labels.length - 1;
     const startVal = isTotal ? 0 : currentRunning;
-    const endVal = isTotal ? currentRunning : currentRunning + rawVal;
-    const isPositive = rawVal >= 0;
+    const endVal = isTotal ? (rawVal !== 0 ? rawVal : currentRunning) : currentRunning + rawVal;
+    const isPositive = isTotal ? endVal >= 0 : rawVal >= 0;
 
     if (!isTotal) {
       currentRunning += rawVal;
     }
 
-    return {
+    steps.push({
       label: lbl,
-      rawVal,
+      rawVal: isTotal ? endVal : rawVal,
       startVal,
       endVal,
       isTotal,
       isPositive
-    };
+    });
   });
+
+  // If the data didn't already have an explicit Total column, append the bridge Ending Total
+  if (!lastIsExplicitTotal && steps.length > 1) {
+    steps.push({
+      label: 'Net Total',
+      rawVal: currentRunning,
+      startVal: 0,
+      endVal: currentRunning,
+      isTotal: true,
+      isPositive: currentRunning >= 0
+    });
+  }
 
   const allBounds = steps.flatMap(s => [s.startVal, s.endVal, 0]);
   let minBound = 0;

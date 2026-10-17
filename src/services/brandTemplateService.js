@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 
 const STORAGE_KEY = 'omnidash_brand_template';
+const UPLOADED_STORAGE_KEY = 'omnidash_brand_uploaded_template';
 
 export function isColorDark(hex) {
   if (!hex) return false;
@@ -9,9 +10,23 @@ export function isColorDark(hex) {
   const r = parseInt(clean.substring(0, 2), 16);
   const g = parseInt(clean.substring(2, 4), 16);
   const b = parseInt(clean.substring(4, 6), 16);
+  if (isNaN(r) || isNaN(g) || isNaN(b)) return false;
   // ITU-R BT.709 relative luminance
   const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
   return luminance < 140;
+}
+
+export function adjustHexBrightness(hex, percent) {
+  if (!hex) return hex;
+  const clean = hex.replace('#', '');
+  if (clean.length !== 6) return hex;
+  let r = parseInt(clean.substring(0, 2), 16);
+  let g = parseInt(clean.substring(2, 4), 16);
+  let b = parseInt(clean.substring(4, 6), 16);
+  r = Math.min(255, Math.max(0, Math.round(r + (255 * percent) / 100)));
+  g = Math.min(255, Math.max(0, Math.round(g + (255 * percent) / 100)));
+  b = Math.min(255, Math.max(0, Math.round(b + (255 * percent) / 100)));
+  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
 }
 
 export const BUILTIN_BRAND_PRESETS = [
@@ -42,7 +57,7 @@ export const BUILTIN_BRAND_PRESETS = [
     category: 'Boardroom & Print',
     colors: {
       background: '#ffffff',
-      surface: '#f8fafc',
+      surface: '#f1f5f9',
       primary: '#1e293b',
       accent: '#2563eb',
       textPrimary: '#0f172a',
@@ -119,25 +134,117 @@ export const BUILTIN_BRAND_PRESETS = [
     logoUrl: null,
     footerDisclaimer: 'Executive Steering Committee — Private & Confidential',
     showAccentStripe: true
+  },
+  {
+    id: 'sapphire-ocean',
+    name: 'Sapphire Royal Ocean',
+    category: 'Global Operations',
+    colors: {
+      background: '#050d1a',
+      surface: '#0c1a30',
+      primary: '#3b82f6',
+      accent: '#60a5fa',
+      textPrimary: '#eff6ff',
+      textMuted: '#93c5fd',
+      accentPalette: ['#3b82f6', '#60a5fa', '#06b6d4', '#6366f1', '#10b981', '#f59e0b']
+    },
+    fonts: {
+      heading: 'Arial',
+      body: 'Calibri'
+    },
+    logoUrl: null,
+    footerDisclaimer: 'Global Operations Review — Highly Confidential',
+    showAccentStripe: true
+  },
+  {
+    id: 'amber-gold',
+    name: 'Sovereign Amber & Gold',
+    category: 'Private Equity & M&A',
+    colors: {
+      background: '#120d04',
+      surface: '#221908',
+      primary: '#f59e0b',
+      accent: '#fbbf24',
+      textPrimary: '#fffbeb',
+      textMuted: '#fde68a',
+      accentPalette: ['#f59e0b', '#fbbf24', '#d97706', '#10b981', '#3b82f6', '#ec4899']
+    },
+    fonts: {
+      heading: 'Georgia',
+      body: 'Arial'
+    },
+    logoUrl: null,
+    footerDisclaimer: 'M&A Advisory & Valuation — Strictly Confidential',
+    showAccentStripe: true
+  },
+  {
+    id: 'cyber-neon',
+    name: 'Neo Cyberpunk Neon',
+    category: 'Modern Analytics',
+    colors: {
+      background: '#0f051d',
+      surface: '#1b0b33',
+      primary: '#d946ef',
+      accent: '#06b6d4',
+      textPrimary: '#faf5ff',
+      textMuted: '#d8b4fe',
+      accentPalette: ['#d946ef', '#06b6d4', '#a855f7', '#22c55e', '#facc15', '#f43f5e']
+    },
+    fonts: {
+      heading: 'Trebuchet MS',
+      body: 'Calibri'
+    },
+    logoUrl: null,
+    footerDisclaimer: 'OmniDash Advanced Analytics — Restricted Distribution',
+    showAccentStripe: true
   }
 ];
 
 /**
- * Parses a user-uploaded .pptx or .potx PowerPoint Brand Master Template
- * Extracts theme colors, fonts, master layouts, and embedded media/logos.
+ * Toggles a template between dark canvas and light canvas mode,
+ * preserving primary/accent/palette colors while re-inverting background, surface, and text colors.
+ */
+export function toggleTemplateContrastMode(template) {
+  if (!template || !template.colors) return template;
+  const currentDark = isColorDark(template.colors.background);
+  const targetDark = !currentDark;
+
+  const newBg = targetDark ? '#0a1120' : '#ffffff';
+  const newSurface = targetDark ? '#131e36' : '#f1f5f9';
+  const newTextPrimary = targetDark ? '#f8fafc' : '#0f172a';
+  const newTextMuted = targetDark ? '#94a3b8' : '#64748b';
+
+  return {
+    ...template,
+    colors: {
+      ...template.colors,
+      background: newBg,
+      surface: newSurface,
+      textPrimary: newTextPrimary,
+      textMuted: newTextMuted
+    }
+  };
+}
+
+/**
+ * Parses a user-uploaded .pptx or .potx PowerPoint Brand Master Template.
+ * Inspects theme XML colors, slide master backgrounds, slide colors, fonts, and embedded logos.
  */
 export async function parsePptxTemplateFile(file) {
   try {
     const arrayBuffer = await file.arrayBuffer();
     const zip = await JSZip.loadAsync(arrayBuffer);
 
-    // 1. Locate theme file (usually ppt/theme/theme1.xml)
+    // 1. Locate theme files (case-insensitive)
     let themeXml = null;
-    const themeFiles = Object.keys(zip.files).filter(f => f.startsWith('ppt/theme/theme') && f.endsWith('.xml'));
+    const themeFiles = Object.keys(zip.files).filter(f =>
+      /ppt\/theme\/theme\d*\.xml/i.test(f)
+    );
     if (themeFiles.length > 0) {
       themeXml = await zip.file(themeFiles[0]).async('text');
     }
 
+    // Default extracted color scheme fallback
     const extractedColors = {
       dk1: '000000',
       lt1: 'FFFFFF',
@@ -155,35 +262,96 @@ export async function parsePptxTemplateFile(file) {
     let minorFont = 'Calibri';
 
     if (themeXml) {
-      // Parse Color Scheme
-      const clrSchemeMatch = themeXml.match(/<a:clrScheme[^>]*>([\s\S]*?)<\/a:clrScheme>/);
+      // Parse Color Scheme: matches <a:clrScheme ...> or <clrScheme ...>
+      const clrSchemeMatch = themeXml.match(/<(?:\w+:)?clrScheme[^>]*>([\s\S]*?)<\/(?:\w+:)?clrScheme>/i);
       if (clrSchemeMatch) {
         const tags = ['dk1', 'lt1', 'dk2', 'lt2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6'];
         for (const tag of tags) {
-          const reg = new RegExp(`<a:${tag}[^>]*>([\\s\\S]*?)<\\/a:${tag}>`);
+          const reg = new RegExp(`<(?:\\w+:)?${tag}[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?${tag}>`, 'i');
           const match = clrSchemeMatch[1].match(reg);
           if (match) {
-            const valMatch = match[1].match(/val="([A-Fa-f0-9]{6})"/i) || match[1].match(/lastClr="([A-Fa-f0-9]{6})"/i);
-            if (valMatch && valMatch[1]) {
-              extractedColors[tag] = valMatch[1].toUpperCase();
+            const inner = match[1];
+            // Check for srgbClr val="RRGGBB"
+            const srgbMatch = inner.match(/val="([A-Fa-f0-9]{6})"/i);
+            if (srgbMatch) {
+              extractedColors[tag] = srgbMatch[1].toUpperCase();
+            } else {
+              // Check for sysClr lastClr="RRGGBB"
+              const lastClrMatch = inner.match(/lastClr="([A-Fa-f0-9]{6})"/i);
+              if (lastClrMatch) {
+                extractedColors[tag] = lastClrMatch[1].toUpperCase();
+              } else if (/val="windowText"/i.test(inner)) {
+                extractedColors[tag] = '000000';
+              } else if (/val="window"/i.test(inner)) {
+                extractedColors[tag] = 'FFFFFF';
+              }
             }
           }
         }
       }
 
-      // Parse Font Scheme
-      const fontSchemeMatch = themeXml.match(/<a:fontScheme[^>]*>([\s\S]*?)<\/a:fontScheme>/);
+      // Parse Font Scheme: matches <a:fontScheme ...>
+      const fontSchemeMatch = themeXml.match(/<(?:\w+:)?fontScheme[^>]*>([\s\S]*?)<\/(?:\w+:)?fontScheme>/i);
       if (fontSchemeMatch) {
-        const majorMatch = fontSchemeMatch[1].match(/<a:majorFont>[\s\S]*?<a:latin typeface="([^"]+)"/);
-        const minorMatch = fontSchemeMatch[1].match(/<a:minorFont>[\s\S]*?<a:latin typeface="([^"]+)"/);
+        const majorMatch = fontSchemeMatch[1].match(/<(?:\w+:)?majorFont>[\s\S]*?typeface="([^"]+)"/i);
+        const minorMatch = fontSchemeMatch[1].match(/<(?:\w+:)?minorFont>[\s\S]*?typeface="([^"]+)"/i);
         if (majorMatch && majorMatch[1]) majorFont = majorMatch[1];
         if (minorMatch && minorMatch[1]) minorFont = minorMatch[1];
       }
     }
 
-    // 2. Extract embedded images / logos in ppt/media/
+    // 2. Inspect Slide Masters to determine real slide background & clrMap
+    let isMasterDark = false;
+    let explicitBgHex = null;
+    const slideMasterFiles = Object.keys(zip.files).filter(f =>
+      /ppt\/slideMasters\/slideMaster\d*\.xml/i.test(f)
+    );
+
+    if (slideMasterFiles.length > 0) {
+      try {
+        const masterXml = await zip.file(slideMasterFiles[0]).async('text');
+        // Check clrMap: e.g. <p:clrMap bg1="dk1" tx1="lt1" ... />
+        const clrMapMatch = masterXml.match(/<(?:\w+:)?clrMap[^>]*bg1="(\w+)"/i);
+        if (clrMapMatch && /dk[12]/i.test(clrMapMatch[1])) {
+          isMasterDark = true;
+        }
+
+        // Check explicit solidFill background in slideMaster: <p:bg> ... <a:srgbClr val="RRGGBB"/>
+        const bgMatch = masterXml.match(/<(?:\w+:)?bg>[\s\S]*?val="([A-Fa-f0-9]{6})"/i);
+        if (bgMatch && bgMatch[1]) {
+          explicitBgHex = '#' + bgMatch[1].toUpperCase();
+          isMasterDark = isColorDark(explicitBgHex);
+        }
+      } catch (err) {
+        console.warn('[BrandParser] Could not inspect slideMaster:', err);
+      }
+    }
+
+    // 3. Scan slides and masters for custom corporate RGB colors (to discover genuine brand palette)
+    const scannedColorsSet = new Set();
+    const xmlScanTargets = Object.keys(zip.files).filter(f =>
+      /ppt\/(slideMasters|slides)\/.*\.xml$/i.test(f)
+    ).slice(0, 10);
+
+    for (const xmlPath of xmlScanTargets) {
+      try {
+        const content = await zip.file(xmlPath).async('text');
+        const matches = content.matchAll(/<(?:\w+:)?srgbClr\s+val="([A-Fa-f0-9]{6})"/gi);
+        for (const m of matches) {
+          const hex = m[1].toUpperCase();
+          // Filter out near-pure blacks and whites from accent candidate list
+          if (hex !== '000000' && hex !== 'FFFFFF' && hex !== '1E293B' && hex !== 'F1F5F9') {
+            scannedColorsSet.add('#' + hex);
+          }
+        }
+      } catch (e) {
+        // ignore scan error
+      }
+    }
+
+    // 4. Extract embedded images / logos in ppt/media/
     const mediaFiles = Object.keys(zip.files).filter(f =>
-      f.startsWith('ppt/media/') && /\.(png|jpe?g|svg|webp)$/i.test(f)
+      f.toLowerCase().startsWith('ppt/media/') && /\.(png|jpe?g|svg|webp)$/i.test(f)
     );
 
     const extractedMedia = [];
@@ -204,14 +372,43 @@ export async function parsePptxTemplateFile(file) {
       }
     }
 
-    // Determine background color and surface
-    const bgHex = '#' + extractedColors.lt1;
+    // 5. Construct cohesive color tokens based on detected background
+    let bgHex = explicitBgHex;
+    if (!bgHex) {
+      bgHex = isMasterDark ? '#' + extractedColors.dk1 : '#' + extractedColors.lt1;
+    }
     const isDark = isColorDark(bgHex);
-    const textPrimaryHex = '#' + (isDark ? extractedColors.lt1 : extractedColors.dk1);
-    const textMutedHex = '#' + (isDark ? extractedColors.lt2 : extractedColors.dk2);
+
+    const surfaceHex = isDark
+      ? (extractedColors.dk2 ? '#' + extractedColors.dk2 : '#131e36')
+      : (extractedColors.lt2 ? '#' + extractedColors.lt2 : '#f1f5f9');
+
+    const textPrimaryHex = isDark
+      ? (extractedColors.lt1 ? '#' + extractedColors.lt1 : '#f8fafc')
+      : (extractedColors.dk1 ? '#' + extractedColors.dk1 : '#0f172a');
+
+    const textMutedHex = isDark
+      ? (extractedColors.lt2 ? '#' + extractedColors.lt2 : '#94a3b8')
+      : (extractedColors.dk2 ? '#' + extractedColors.dk2 : '#64748b');
 
     const primaryAccent = '#' + extractedColors.accent1;
     const secondaryAccent = '#' + extractedColors.accent2;
+
+    // Build the 6-color Chart Accent Ramp
+    // Combine explicit accent tags, and supplement with scanned custom slide colors if available
+    const basePalette = [
+      '#' + extractedColors.accent1,
+      '#' + extractedColors.accent2,
+      '#' + extractedColors.accent3,
+      '#' + extractedColors.accent4,
+      '#' + extractedColors.accent5,
+      '#' + extractedColors.accent6
+    ];
+
+    const uniquePalette = Array.from(new Set([...basePalette, ...scannedColorsSet])).slice(0, 8);
+    while (uniquePalette.length < 6) {
+      uniquePalette.push(primaryAccent);
+    }
 
     const brandTemplate = {
       id: `custom-pptx-${Date.now()}`,
@@ -220,19 +417,12 @@ export async function parsePptxTemplateFile(file) {
       isUploaded: true,
       colors: {
         background: bgHex,
-        surface: isDark ? '#' + extractedColors.dk2 : '#' + extractedColors.lt2,
+        surface: surfaceHex,
         primary: primaryAccent,
         accent: secondaryAccent,
         textPrimary: textPrimaryHex,
         textMuted: textMutedHex,
-        accentPalette: [
-          '#' + extractedColors.accent1,
-          '#' + extractedColors.accent2,
-          '#' + extractedColors.accent3,
-          '#' + extractedColors.accent4,
-          '#' + extractedColors.accent5,
-          '#' + extractedColors.accent6
-        ]
+        accentPalette: uniquePalette.slice(0, 6)
       },
       fonts: {
         heading: majorFont,
@@ -244,11 +434,14 @@ export async function parsePptxTemplateFile(file) {
       showAccentStripe: true
     };
 
+    // Save as uploaded template cache
+    saveUploadedBrandTemplate(brandTemplate);
+
     return {
       success: true,
       template: brandTemplate,
       mediaCount: extractedMedia.length,
-      colorsFound: Object.keys(extractedColors).length
+      colorsFound: uniquePalette.length
     };
   } catch (error) {
     console.error('[BrandParser] Failed to parse PPTX template:', error);
@@ -276,3 +469,22 @@ export function loadActiveBrandTemplate() {
   } catch (e) {}
   return BUILTIN_BRAND_PRESETS[0];
 }
+
+export function saveUploadedBrandTemplate(template) {
+  try {
+    localStorage.setItem(UPLOADED_STORAGE_KEY, JSON.stringify(template));
+  } catch (e) {
+    console.warn('[BrandParser] Could not save uploaded brand template:', e);
+  }
+}
+
+export function loadUploadedBrandTemplate() {
+  try {
+    const raw = localStorage.getItem(UPLOADED_STORAGE_KEY);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch (e) {}
+  return null;
+}
+
