@@ -140,69 +140,222 @@ function formatValue(val) {
 }
 
 /**
+ * Normalizes text for robust semantic matching (removes underscores, punctuation, extra spaces)
+ */
+export function normalizeText(str) {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .toLowerCase()
+    .replace(/[_\-.]+/g, ' ')
+    .replace(/[^a-z0-9 ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Checks whether a column is likely a unique transaction/row identifier rather than an analytical grouping dimension
+ */
+export function isIdentifierColumn(colName) {
+  if (!colName) return false;
+  const normalized = normalizeText(colName);
+  return (
+    /^(transaction|shipment|order|record|row|invoice|item|cust|user|account)?\s*id$/.test(normalized) ||
+    /^(id|uuid|guid|pk|fk|index|key|hash|code|num|no)$/.test(normalized) ||
+    /_id$|^id_|_key$|^key_/i.test(colName)
+  );
+}
+
+/**
+ * Comprehensive business synonym mapping for measures and dimensions
+ */
+const MEASURE_SYNONYMS = {
+  profit: ['profit', 'gross profit', 'operating profit', 'net profit', 'net income', 'ebitda', 'operating income', 'margin'],
+  revenue: ['revenue', 'sales', 'turnover', 'gross revenue', 'bookings', 'income', 'topline'],
+  cost: ['cost', 'cogs', 'opex', 'expense', 'expenses', 'spend', 'expenditure', 'freight cost', 'unit cost', 'shipping cost'],
+  price: ['price', 'unit price', 'rate', 'tariff', 'fee'],
+  quantity: ['quantity', 'units', 'volume', 'headcount', 'count', 'subscribers', 'signups', 'active subscribers', 'units shipped'],
+  lead_time: ['lead time', 'duration', 'days', 'latency'],
+  satisfaction: ['customer satisfaction', 'csat', 'nps', 'score', 'rating'],
+  ratio: ['ratio', 'cac', 'ltv', 'ltv cac ratio', 'rate pct', 'churn rate', 'defect rate']
+};
+
+const DIMENSION_SYNONYMS = {
+  category: ['category', 'product category', 'type', 'tier', 'plan tier', 'business unit', 'group', 'segment', 'department'],
+  product: ['product', 'product name', 'item', 'sku', 'service', 'hardware', 'app'],
+  region: ['region', 'country', 'origin country', 'territory', 'location', 'geography', 'geo', 'city', 'state', 'hub', 'warehouse hub'],
+  supplier: ['supplier', 'vendor', 'partner', 'carrier', 'origin'],
+  customer: ['customer', 'client', 'account', 'user', 'rep', 'salesperson', 'agent'],
+  time: ['date', 'quarter', 'month', 'year', 'week', 'period', 'day', 'time'],
+  mode: ['transport mode', 'channel', 'mode', 'source', 'status']
+};
+
+/**
+ * Computes semantic relevance score between user query and column name
+ */
+function scoreColumnMatch(queryNorm, colName, synonymsMap) {
+  const colNorm = normalizeText(colName);
+  if (!colNorm) return -1;
+
+  // 1. Exact full-name substring match (e.g. "product category" in query)
+  if (queryNorm.includes(colNorm)) {
+    return 100 + colNorm.length;
+  }
+
+  // 2. Tokenized match: every word in the column name appears in the query
+  const colWords = colNorm.split(' ').filter(w => w.length > 1);
+  if (colWords.length > 0 && colWords.every(w => queryNorm.includes(w))) {
+    return 80 + (colWords.length * 10);
+  }
+
+  // 3. Significant word intersection
+  const queryWords = queryNorm.split(' ').filter(w => w.length > 2);
+  let matchingWords = 0;
+  for (const qw of queryWords) {
+    if (colWords.includes(qw)) {
+      matchingWords++;
+    }
+  }
+  let score = matchingWords > 0 ? (35 + matchingWords * 15) : 0;
+
+  // 4. Synonym / Semantic Concept match
+  if (synonymsMap) {
+    for (const [concept, syns] of Object.entries(synonymsMap)) {
+      const queryMatches = syns.some(s => queryNorm.includes(s));
+      const colMatches = syns.some(s => colNorm.includes(s));
+      if (queryMatches && colMatches) {
+        score = Math.max(score, 60);
+      }
+    }
+  }
+
+  return score;
+}
+
+/**
  * Parses user natural language query into a dashboard widget recommendation
  */
 export function parseNaturalLanguageQuery(query, columnProfiles) {
   if (!query || typeof query !== 'string') return null;
-  const q = query.toLowerCase();
+  const qNorm = normalizeText(query);
+  if (qNorm.length < 3) return null;
 
-  const measures = columnProfiles.filter(c => c.type === 'measure').map(c => c.name);
-  const dimensions = columnProfiles.filter(c => c.type !== 'measure').map(c => c.name);
+  const measures = (columnProfiles || []).filter(c => c.type === 'measure').map(c => c.name);
+  const dimensions = (columnProfiles || []).filter(c => c.type !== 'measure').map(c => c.name);
 
-  // Find mentioned measure
-  let matchedMeasure = measures.find(m => q.includes(m.toLowerCase()));
+  // 1. Match Best Measure
+  let matchedMeasure = null;
+  let bestMeasureScore = 0;
+  for (const m of measures) {
+    const score = scoreColumnMatch(qNorm, m, MEASURE_SYNONYMS);
+    if (score > bestMeasureScore) {
+      bestMeasureScore = score;
+      matchedMeasure = m;
+    }
+  }
+
+  // Fallback: If no measure explicitly matched, select the first sensible primary measure
   if (!matchedMeasure && measures.length > 0) {
-    // Check keywords like revenue, profit, cost, sales, mrr, churn
-    const keywords = ['revenue', 'profit', 'cost', 'ebitda', 'mrr', 'sales', 'lead', 'rate', 'price'];
-    for (const kw of keywords) {
-      if (q.includes(kw)) {
-        matchedMeasure = measures.find(m => m.toLowerCase().includes(kw)) || measures[0];
-        break;
+    matchedMeasure = measures[0];
+  }
+
+  // 2. Match Best Dimension (and optionally Secondary Dimension)
+  let matchedDimension = null;
+  let secondaryDimension = null;
+  let bestDimScore = 0;
+
+  const rankedDimensions = dimensions.map(d => {
+    let score = scoreColumnMatch(qNorm, d, DIMENSION_SYNONYMS);
+    // Severe penalty for pure identifier columns if not explicitly asked by name
+    if (isIdentifierColumn(d) && !qNorm.includes(normalizeText(d))) {
+      score -= 50;
+    }
+    const dNorm = normalizeText(d);
+    const indexInQuery = dNorm && qNorm.includes(dNorm) ? qNorm.indexOf(dNorm) : 999;
+    return { name: d, score, indexInQuery };
+  }).sort((a, b) => {
+    // If both are strong matches, order by their appearance in the user query (first mentioned = primary)
+    if (Math.abs(b.score - a.score) <= 20 && a.indexInQuery !== b.indexInQuery && a.indexInQuery < 999 && b.indexInQuery < 999) {
+      return a.indexInQuery - b.indexInQuery;
+    }
+    return b.score - a.score;
+  });
+
+  if (rankedDimensions.length > 0 && rankedDimensions[0].score > 0) {
+    matchedDimension = rankedDimensions[0].name;
+
+    // Only assign secondaryDimension if query explicitly indicates a multi-dimensional breakdown
+    // (e.g. "by Region and Quarter", "split by", "across", "broken down by")
+    const hasMultiDimIndicator = /\b(and|across|split by|broken down by)\b/i.test(qNorm);
+    if (hasMultiDimIndicator && rankedDimensions.length > 1 && rankedDimensions[1].score >= 60) {
+      const primWords = normalizeText(matchedDimension).split(' ');
+      const secWords = normalizeText(rankedDimensions[1].name).split(' ');
+      const hasUniqueWords = secWords.some(w => !primWords.includes(w) && qNorm.includes(w));
+
+      if (hasUniqueWords) {
+        secondaryDimension = rankedDimensions[1].name;
       }
     }
   }
 
-  // Find mentioned dimension
-  let matchedDimension = dimensions.find(d => q.includes(d.toLowerCase()));
+  // Fallback: If no dimension explicitly matched in query, choose the most sensible non-ID dimension
   if (!matchedDimension && dimensions.length > 0) {
-    const dimKeywords = ['quarter', 'month', 'date', 'region', 'tier', 'supplier', 'unit', 'country'];
-    for (const kw of dimKeywords) {
-      if (q.includes(kw)) {
-        matchedDimension = dimensions.find(d => d.toLowerCase().includes(kw)) || dimensions[0];
-        break;
-      }
-    }
+    const sensibleDimensions = dimensions.filter(d => !isIdentifierColumn(d));
+    matchedDimension = sensibleDimensions[0] || dimensions[0];
   }
 
-  // Determine chart type
+  // 3. Determine Chart Type
   let chartType = 'bar';
-  if (q.includes('trend') || q.includes('time') || q.includes('month') || q.includes('over time') || q.includes('line')) {
+  if (qNorm.includes('trend') || qNorm.includes('time') || qNorm.includes('month') || qNorm.includes('over time') || qNorm.includes('trajectory') || qNorm.includes('line')) {
     chartType = 'line';
-  } else if (q.includes('share') || q.includes('proportion') || q.includes('donut') || q.includes('pie') || q.includes('breakdown')) {
+  } else if (qNorm.includes('share') || qNorm.includes('proportion') || qNorm.includes('donut') || qNorm.includes('pie') || qNorm.includes('breakdown')) {
     chartType = 'donut';
-  } else if (q.includes('cumulative') || q.includes('area')) {
+  } else if (qNorm.includes('cumulative') || qNorm.includes('running') || qNorm.includes('area')) {
     chartType = 'area';
-  } else if (q.includes('matrix') || q.includes('pivot')) {
+  } else if (qNorm.includes('matrix') || qNorm.includes('pivot') || qNorm.includes('cross tab')) {
     chartType = 'pivot';
-  } else if (q.includes('waterfall') || q.includes('walk')) {
+  } else if (qNorm.includes('waterfall') || qNorm.includes('walk') || qNorm.includes('bridge') || qNorm.includes('variance')) {
     chartType = 'waterfall';
-  } else if (q.includes('radar') || q.includes('spider')) {
+  } else if (qNorm.includes('gauge') || qNorm.includes('target') || qNorm.includes('kpi') || qNorm.includes('meter')) {
+    chartType = 'gauge';
+  } else if (qNorm.includes('radar') || qNorm.includes('spider')) {
     chartType = 'radar';
+  } else if (secondaryDimension) {
+    chartType = 'stackedBar';
   }
 
-  // Determine modifier
+  // 4. Determine Aggregation
+  let aggregation = 'SUM';
+  if (qNorm.includes('average') || qNorm.includes('avg') || qNorm.includes('mean')) {
+    aggregation = 'AVG';
+  } else if (qNorm.includes('median')) {
+    aggregation = 'MEDIAN';
+  } else if (qNorm.includes('count') || qNorm.includes('number of')) {
+    aggregation = 'COUNT';
+  } else if (qNorm.includes('lowest') || qNorm.includes('minimum') || qNorm.includes('min')) {
+    aggregation = 'MIN';
+  } else if (qNorm.includes('highest') || qNorm.includes('maximum') || qNorm.includes('max') || qNorm.includes('peak')) {
+    aggregation = 'MAX';
+  }
+
+  // 5. Determine Modifier
   let modifier = 'RAW';
-  if (q.includes('cumulative') || q.includes('running total')) modifier = 'CUMULATIVE';
-  if (q.includes('growth') || q.includes('mom') || q.includes('rate')) modifier = 'GROWTH_PCT';
-  if (q.includes('percent of total') || q.includes('share of total') || q.includes('pct')) modifier = 'SHARE_OF_TOTAL';
-  if (q.includes('moving average') || q.includes('rolling')) modifier = 'ROLLING_AVG_3';
+  if (qNorm.includes('cumulative') || qNorm.includes('running total')) modifier = 'CUMULATIVE';
+  if (qNorm.includes('growth') || qNorm.includes('mom') || qNorm.includes('rate') || qNorm.includes('delta')) modifier = 'GROWTH_PCT';
+  if (qNorm.includes('percent of total') || qNorm.includes('share of total') || qNorm.includes('pct') || qNorm.includes('share')) modifier = 'SHARE_OF_TOTAL';
+  if (qNorm.includes('moving average') || qNorm.includes('rolling')) modifier = 'ROLLING_AVG_3';
+
+  const displayDimension = matchedDimension || 'Category';
+  const displayMeasure = matchedMeasure || 'Value';
 
   return {
-    title: `${matchedMeasure || 'Performance'} by ${matchedDimension || 'Category'}`,
+    title: secondaryDimension
+      ? `${displayMeasure} by ${displayDimension} & ${secondaryDimension}`
+      : `${displayMeasure} by ${displayDimension}`,
     chartType,
-    dimension: matchedDimension || dimensions[0] || 'Category',
-    measure: matchedMeasure || measures[0] || 'Value',
-    aggregation: 'SUM',
+    dimension: displayDimension,
+    secondaryDimension: secondaryDimension || null,
+    measure: displayMeasure,
+    aggregation,
     modifier
   };
 }

@@ -1,20 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, ArrowRight, CornerDownLeft, Plus } from 'lucide-react';
-import { parseNaturalLanguageQuery } from '../services/smartInsights';
+import { parseNaturalLanguageQuery, isIdentifierColumn } from '../services/smartInsights';
 
 export function SmartQueryBar({ columnProfiles, onAddWidget }) {
   const [query, setQuery] = useState('');
   const [interpretedConfig, setInterpretedConfig] = useState(null);
 
-  // Suggestions based on available columns
-  const measures = columnProfiles.filter(c => c.type === 'measure').map(c => c.name);
-  const dimensions = columnProfiles.filter(c => c.type !== 'measure').map(c => c.name);
+  // Suggestions based on available columns, deprioritizing raw unique ID columns
+  const measures = (columnProfiles || []).filter(c => c.type === 'measure').map(c => c.name);
+  const allDimensions = (columnProfiles || []).filter(c => c.type !== 'measure').map(c => c.name);
+  const sensibleDimensions = allDimensions.filter(d => !isIdentifierColumn(d));
+  const primaryDim = sensibleDimensions[0] || allDimensions[0];
+  const secondaryDim = sensibleDimensions[1] || allDimensions[1];
+  const primaryMeasure = measures[0];
+  const secondaryMeasure = measures[1] || measures[0];
 
   const sampleQueries = [
-    measures[0] && dimensions[0] ? `${measures[0]} by ${dimensions[0]}` : null,
-    measures[0] ? `Cumulative ${measures[0]} over time` : null,
-    measures[1] && dimensions[0] ? `Share of total ${measures[1]} by ${dimensions[0]}` : null,
-    measures[0] ? `${measures[0]} growth rate %` : null
+    primaryMeasure && primaryDim ? `${primaryMeasure} by ${primaryDim}` : null,
+    primaryMeasure ? `Cumulative ${primaryMeasure} over time` : null,
+    secondaryMeasure && primaryDim ? `Share of total ${secondaryMeasure} by ${primaryDim}` : null,
+    primaryMeasure ? `${primaryMeasure} growth rate %` : null
   ].filter(Boolean);
 
   useEffect(() => {
@@ -127,6 +132,14 @@ export function SmartQueryBar({ columnProfiles, onAddWidget }) {
           <div>
             <span style={{ color: '#818cf8', fontWeight: 600 }}>Smart Interpretation: </span>
             <span>Create <strong>{interpretedConfig.chartType.toUpperCase()}</strong> chart showing <strong>{interpretedConfig.measure}</strong> grouped by <strong>{interpretedConfig.dimension}</strong></span>
+            {interpretedConfig.secondaryDimension && (
+              <span> &amp; <strong>{interpretedConfig.secondaryDimension}</strong></span>
+            )}
+            {interpretedConfig.aggregation && interpretedConfig.aggregation !== 'SUM' && (
+              <span className="badge badge-indigo" style={{ marginLeft: '8px' }}>
+                {interpretedConfig.aggregation}
+              </span>
+            )}
             {interpretedConfig.modifier !== 'RAW' && (
               <span className="badge badge-amber" style={{ marginLeft: '8px' }}>
                 Modifier: {interpretedConfig.modifier}
