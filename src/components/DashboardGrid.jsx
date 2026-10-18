@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { WidgetCard } from './WidgetCard';
+import { WidgetZoomModal } from './WidgetZoomModal';
 import { Plus } from 'lucide-react';
 
 export function DashboardGrid({
@@ -15,6 +16,7 @@ export function DashboardGrid({
 }) {
   const [draggedIndex, setDraggedIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
+  const [zoomedWidget, setZoomedWidget] = useState(null);
 
   const handleDragStart = (e, index) => {
     setDraggedIndex(index);
@@ -81,6 +83,7 @@ export function DashboardGrid({
             onDuplicate={onDuplicateWidget}
             onDelete={onDeleteWidget}
             onResize={onResizeWidget}
+            onZoom={setZoomedWidget}
             draggable={true}
             onDragStart={(e) => handleDragStart(e, index)}
             onDragOver={(e) => handleDragOver(e, index)}
@@ -138,6 +141,20 @@ export function DashboardGrid({
           <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>Choose dimensions, measures, calculations & chart formats</div>
         </div>
       </div>
+
+      {/* Spotlight Zoom Lightbox Modal */}
+      {zoomedWidget && (
+        <WidgetZoomModal
+          widget={zoomedWidget}
+          data={data}
+          theme={theme}
+          onClose={() => setZoomedWidget(null)}
+          onEdit={(w) => {
+            setZoomedWidget(null);
+            if (onEditWidget) onEditWidget(w);
+          }}
+        />
+      )}
     </div>
   );
 }

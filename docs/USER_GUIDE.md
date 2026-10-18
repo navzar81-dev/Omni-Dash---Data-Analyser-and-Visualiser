@@ -251,6 +251,32 @@ In cross-tabular matrices, a common software bug is taking the "average of avera
 
 ---
 
+### 5.4 Widget Spotlight Zoom & Underlying Data Table Inspection
+To facilitate granular inspection of complex multi-series trends, crowded categorical bars, or dense pivot tables, OmniDash provides an **Executive Spotlight Zoom Lightbox**:
+
+* **How to Trigger**:
+  - Click the **Maximize / Zoom** icon button in the top-right header of any reporting widget card.
+  - Alternatively, **double-click** anywhere on the widget card header.
+* **Widescreen High-Resolution Canvas (94vw × 90vh)**:
+  - Dynamically re-renders the chart in large widescreen format, providing spacious axis labeling, expanded splines, and high-contrast tooltip fidelity.
+* **Executive Summary Metrics Strip**:
+  - Prominently calculates five statistical velocity metrics for the active chart:
+    - **Series Total**: Formatted aggregate sum.
+    - **Category Average**: Mean value per category/bucket.
+    - **Peak Point**: Highest point value and its corresponding category label.
+    - **Trough Point**: Lowest point value and its corresponding category label.
+    - **Categories/Points Count**: Total distinct observation count.
+* **Underlying Data Table Toggle**:
+  - Switch seamlessly between `[ 📈 Chart View ]` and `[ 📋 Underlying Data Table ]`.
+  - The tabular view features live real-time search filtering, column sorting on click, category attribution, formatted values, and dynamic **Share of Total %** calculations.
+  - Dedicated **Export CSV** button downloads the widget's underlying aggregated records directly.
+* **Keyboard & Close Controls**:
+  - Pressing `ESC`, clicking the minimize button, or clicking the backdrop overlay smoothly returns to the exact dashboard view.
+* **In-Card Grid Width Selection Preserved**:
+  - Users can also adjust individual grid card widths directly on the dashboard (`1/4`, `1/3`, `1/2`, `2/3`, `Full Span 12`) via the card options dropdown.
+
+---
+
 ## 6. On-Device AI Business Analyst (WASM Engine)
 
 OmniDash includes an on-device Artificial Intelligence assistant capable of answering natural language business questions, discovering anomalies, and summarizing strategic insights.

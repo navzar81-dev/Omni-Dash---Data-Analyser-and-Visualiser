@@ -25,7 +25,7 @@ import { WaterfallChart } from './WaterfallChart';
 import { GaugeWidget } from './GaugeWidget';
 import { PivotTableWidget } from './PivotTableWidget';
 
-const PALETTES = {
+export const PALETTES = {
   indigo: {
     primary: 'rgba(99, 102, 241, 0.85)',
     border: '#6366f1',
@@ -72,7 +72,8 @@ export function WidgetCard({
   isDragging = false,
   isDropTarget = false,
   hideControls = false,
-  idOverride = null
+  idOverride = null,
+  onZoom = null
 }) {
   const [showMenu, setShowMenu] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -315,7 +316,11 @@ export function WidgetCard({
             </div>
           )}
 
-          <div>
+          <div
+            onDoubleClick={() => onZoom && onZoom(widget)}
+            title={onZoom ? "Double-click to expand / zoom into chart" : undefined}
+            style={{ cursor: onZoom ? 'pointer' : 'default' }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <h3 style={{ fontSize: hideControls ? '1.05rem' : '0.98rem', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-main)' }}>
                 {title}
@@ -335,6 +340,38 @@ export function WidgetCard({
         {/* Action Buttons: Quick Download Image & More Options (hidden in slide embeds / presentation capture) */}
         {!hideControls && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {/* Quick Zoom / Expand Lightbox Button */}
+            {onZoom && (
+              <button
+                onClick={() => onZoom(widget)}
+                title="Expand / Zoom into Chart (Full Screen & Underlying Data)"
+                style={{
+                  background: 'rgba(99, 102, 241, 0.08)',
+                  border: '1px solid rgba(99, 102, 241, 0.25)',
+                  color: theme === 'light' ? '#4f46e5' : '#a5b4fc',
+                  cursor: 'pointer',
+                  padding: '6px',
+                  borderRadius: '7px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.15s'
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.color = '#ffffff';
+                  e.currentTarget.style.background = '#6366f1';
+                  e.currentTarget.style.borderColor = '#4f46e5';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.color = theme === 'light' ? '#4f46e5' : '#a5b4fc';
+                  e.currentTarget.style.background = 'rgba(99, 102, 241, 0.08)';
+                  e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.25)';
+                }}
+              >
+                <Maximize2 size={14} />
+              </button>
+            )}
+
             {/* Direct Download Image Button */}
             <button
               onClick={handleDownloadImage}
@@ -381,7 +418,7 @@ export function WidgetCard({
                   position: 'absolute',
                   top: 'calc(100% + 4px)',
                   right: 0,
-                  width: '190px',
+                  width: '200px',
                   padding: '6px',
                   zIndex: 40,
                   display: 'flex',
@@ -390,6 +427,17 @@ export function WidgetCard({
                 }}
                 onMouseLeave={() => setShowMenu(false)}
               >
+                {onZoom && (
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    style={{ width: '100%', justifyContent: 'flex-start', border: 'none' }}
+                    onClick={() => { onZoom(widget); setShowMenu(false); }}
+                  >
+                    <Maximize2 size={13} color="#818cf8" />
+                    <span>Expand & View Data</span>
+                  </button>
+                )}
+
                 <button
                   className="btn btn-secondary btn-sm"
                   style={{ width: '100%', justifyContent: 'flex-start', border: 'none' }}
