@@ -270,6 +270,10 @@ To facilitate granular inspection of complex multi-series trends, crowded catego
   - Switch seamlessly between `[ 📈 Chart View ]` and `[ 📋 Underlying Data Table ]`.
   - The tabular view features live real-time search filtering, column sorting on click, category attribution, formatted values, and dynamic **Share of Total %** calculations.
   - Dedicated **Export CSV** button downloads the widget's underlying aggregated records directly.
+* **Full-Density Data Labels with Smart Anti-Collision Guardrail**:
+  - In standard dashboard grid cards, OmniDash applies smart density throttling to keep compact tiles clean and decluttered.
+  - When opened in the **Spotlight Zoom Lightbox**, the engine automatically activates full data label density, displaying exact values atop every bar or line point across the widescreen canvas.
+  - If a dataset is exceptionally dense (e.g., 60–100+ categories) where text would physically overlap, the pixel bounding-box collision guardrail gracefully suppresses only the colliding labels, while mouseover tooltips and the **Underlying Data Table** tab provide instantaneous access to every exact figure.
 * **Keyboard & Close Controls**:
   - Pressing `ESC`, clicking the minimize button, or clicking the backdrop overlay smoothly returns to the exact dashboard view.
 * **In-Card Grid Width Selection Preserved**:

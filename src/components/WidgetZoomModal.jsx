@@ -253,7 +253,19 @@ export function WidgetZoomModal({
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    layout: {
+      padding: {
+        top: chartType === 'bar' || chartType === 'stackedBar' || chartType === 'line' || chartType === 'area' ? 24 : 8,
+        bottom: 6
+      }
+    },
     plugins: {
+      customDataLabels: {
+        display: chartType === 'bar' || chartType === 'stackedBar' || chartType === 'line' || chartType === 'area',
+        metricName: measure,
+        modifier: modifier,
+        expandedView: true
+      },
       legend: {
         display: aggregated.datasets.length > 1 || chartType === 'donut',
         position: 'top',

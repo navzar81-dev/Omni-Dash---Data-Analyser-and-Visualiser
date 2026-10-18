@@ -67,6 +67,8 @@ export const customDataLabelsPlugin = {
     // Track all rendered bounding boxes across the chart to prevent collision / overlapping
     const renderedBoxes = [];
 
+    const isExpanded = !!pluginOptions?.expandedView;
+
     chart.data.datasets.forEach((dataset, datasetIndex) => {
       const meta = chart.getDatasetMeta(datasetIndex);
       if (!meta || meta.hidden) return;
@@ -74,12 +76,19 @@ export const customDataLabelsPlugin = {
       const totalPoints = meta.data ? meta.data.length : 0;
       if (totalPoints === 0) return;
 
-      // Smart density throttling for dense datasets (e.g. 50+ Transaction IDs):
+      // Density throttling:
+      // In standard/small cards: throttle aggressively so small tiles remain uncluttered
+      // In expanded/zoom view: attempt every single bar (step = 1), only skipping if true physical collision occurs
       let step = 1;
-      if (totalPoints > 80) step = Math.ceil(totalPoints / 8);
-      else if (totalPoints > 40) step = Math.ceil(totalPoints / 10);
-      else if (totalPoints > 20) step = Math.ceil(totalPoints / 14);
-      else if (totalPoints > 12) step = 2;
+      if (!isExpanded) {
+        if (totalPoints > 80) step = Math.ceil(totalPoints / 8);
+        else if (totalPoints > 40) step = Math.ceil(totalPoints / 10);
+        else if (totalPoints > 20) step = Math.ceil(totalPoints / 14);
+        else if (totalPoints > 12) step = 2;
+      } else if (totalPoints > 90) {
+        // Extreme density safeguard in zoom view (90+ bars on screen, bars < 12px wide)
+        step = Math.ceil(totalPoints / 45);
+      }
 
       meta.data.forEach((element, index) => {
         if (index % step !== 0) return;
@@ -115,18 +124,22 @@ export const customDataLabelsPlugin = {
 
         // Clamp to chart area so labels are never clipped off-canvas
         if (chartArea) {
-          if (y < chartArea.top + 10) y = chartArea.top + 12;
+          if (y < chartArea.top + 8) y = chartArea.top + 10;
           if (y > chartArea.bottom - 4) y = chartArea.bottom - 4;
           if (x < chartArea.left + 16) x = chartArea.left + 16;
           if (x > chartArea.right - 16) x = chartArea.right - 16;
         }
 
         ctx.save();
-        ctx.font = '700 10.5px "Plus Jakarta Sans", "Inter", -apple-system, sans-serif';
+        // Dynamic typography: in expanded view with many bars (e.g. 25-50), use crisp 9.5px font
+        const fontSize = isExpanded && totalPoints > 24 ? 9.5 : 10.5;
+        ctx.font = `700 ${fontSize}px "Plus Jakarta Sans", "Inter", -apple-system, sans-serif`;
         const textMetrics = ctx.measureText(text);
         const textWidth = textMetrics.width;
-        const boxWidth = textWidth + 12;
-        const boxHeight = 16;
+        // In expanded view, tighter padding (+4px instead of +12px) allows closely packed bars to show their labels
+        const boxPadding = isExpanded ? 4 : 10;
+        const boxWidth = textWidth + boxPadding;
+        const boxHeight = 15;
 
         // Bounding box for collision detection
         const box = {
